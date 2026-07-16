@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="${SCRIPT_DIR}/../frontend"
 
 NAS_HOST="bvarnai@nas48"
-NAS_DEST_DIR="/home/bvarnai/infra/nodes/nas48/etc/nginx/htdocs/lunagrid/"
+NAS_DEST_DIR="infra/nodes/nas48/etc/nginx/htdocs/lunagrid/"
 
 echo "=== 1. Building Frontend Locally ==="
 cd "${FRONTEND_DIR}"
@@ -20,7 +20,5 @@ echo "=== 3. Uploading Static Assets via rsync ==="
 # -a: archive mode, -v: verbose, -z: compress, --delete: delete extraneous files from destination
 rsync -avz --delete "${FRONTEND_DIR}/dist/" "${NAS_HOST}:${NAS_DEST_DIR}"
 
-echo "=== 4. Reloading Nginx Container on NAS ==="
-ssh "${NAS_HOST}" "docker exec nginx nginx -s reload"
-
 echo "=== Deployment Successful! ==="
+

@@ -94,7 +94,7 @@ Run the automated deployment script from your local workspace to compile and upl
 ```
 
 > [!TIP]
-> The [deploy.sh](file:///home/bvarnai/workspace/lunagrid/tools/deploy.sh) script automatically runs `npm run build` locally, uploads the compiled code via `rsync` to `bvarnai@nas48`, and tells the remote Nginx container to reload its configuration.
+> The [deploy.sh](file:///home/bvarnai/workspace/lunagrid/tools/deploy.sh) script automatically runs `npm run build` locally and uploads the compiled code via `rsync` to `bvarnai@nas48`.
 
 ### Step 3: Launch Docker Services (on NAS)
 Pull changes from the repository on the NAS, build the Node.js backend image, and start the containers:
