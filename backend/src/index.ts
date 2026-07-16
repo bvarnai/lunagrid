@@ -2,6 +2,8 @@ import express from 'express';
 import mqtt from 'mqtt';
 import * as dotenv from 'dotenv';
 import cors from 'cors';
+import { readFileSync } from 'fs';
+import path from 'path';
 import { 
   initDb, 
   getAllLocations, 
@@ -21,6 +23,19 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 const mqttBrokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com:1883';
+
+// Dynamically resolve application version from package.json (Industry best practice)
+const getAppVersion = (): string => {
+  try {
+    const packageJsonPath = path.resolve(__dirname, '../package.json');
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+    return packageJson.version || '1.0.0';
+  } catch (error) {
+    console.warn('[VERSION] Could not dynamically load version from package.json, falling back to 1.0.0', error);
+    return '1.0.0';
+  }
+};
+const appVersion = getAppVersion();
 
 app.use(express.json());
 app.use(cors());
@@ -42,6 +57,7 @@ const telemetryCache: Record<string, CachedTelemetry> = {};
 app.get('/', (req, res) => {
   res.json({
     message: 'Welcome to the Project Lunagrid REST API',
+    version: appVersion,
     endpoints: {
       health: 'GET /api/health',
       locations: 'GET /api/locations',
@@ -53,7 +69,7 @@ app.get('/', (req, res) => {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date() });
+  res.json({ status: 'healthy', version: appVersion, timestamp: new Date() });
 });
 
 // Locations API
@@ -183,6 +199,68 @@ app.get('/api/locations/:id/history', async (req, res) => {
   } catch (error) {
     console.error('[HISTORY] Error fetching from InfluxDB:', error);
     res.status(500).json({ error: 'Failed to retrieve historical telemetry' });
+  }
+});
+
+// Query InfluxDB for last 7 days of B-tariff compliance metrics
+app.get('/api/locations/:id/compliance', async (req, res) => {
+  const locationId = req.params.id;
+  try {
+    const device = await getDeviceByLocationId(locationId);
+    if (!device) {
+      return res.json([]);
+    }
+
+    // Flux query that aggregates true/false states into hourly fractions, then sums them daily.
+    // Result value is the total active hours in that 1-day calendar window.
+    const fluxQuery = `from(bucket: "lunagrid-telemetry")
+  |> range(start: -7d)
+  |> filter(fn: (r) => r["_measurement"] == "mqtt_consumer" and r["device_id"] == "${device.id}")
+  |> filter(fn: (r) => r["_field"] == "grid_active")
+  |> map(fn: (r) => ({ r with _value: if r._value == "true" or r._value == true then 1.0 else 0.0 }))
+  |> aggregateWindow(every: 1h, fn: mean, createEmpty: false)
+  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)
+  |> keep(columns: ["_time", "_value"])`;
+
+    const response = await fetch('http://influxdb:8086/api/v2/query?org=lunagrid-org', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Token lunagrid_secure_pass123',
+        'Content-Type': 'application/vnd.flux',
+        'Accept': 'application/csv'
+      },
+      body: fluxQuery
+    });
+
+    if (!response.ok) {
+      throw new Error(`InfluxDB query failed: ${response.statusText}`);
+    }
+
+    const csvText = await response.text();
+    const lines = csvText.split('\n');
+    const compliance: Array<{ date: string; activeHours: number; compliant: boolean }> = [];
+
+    for (const line of lines) {
+      const parts = line.split(',');
+      if (parts.length >= 6 && parts[0] === '' && (parts[1] === '_result' || parts[1] === 'result')) {
+        if (parts[3] === '_time') continue; // Skip header row
+        
+        const time = parts[3];
+        const activeHours = Math.round(parseFloat(parts[4]) * 10) / 10; // Round to 1 decimal place
+        compliance.push({
+          date: time,
+          activeHours: activeHours,
+          compliant: activeHours >= 8.0
+        });
+      }
+    }
+
+    // Sort by date ascending (oldest first, so it renders nicely from left to right)
+    compliance.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    res.json(compliance);
+  } catch (error) {
+    console.error('[COMPLIANCE] Error fetching compliance metrics:', error);
+    res.status(500).json({ error: 'Failed to retrieve compliance records' });
   }
 });
 

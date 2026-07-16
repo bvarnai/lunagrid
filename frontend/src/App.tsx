@@ -28,6 +28,12 @@ interface HistoryItem {
   active: boolean;
 }
 
+interface ComplianceItem {
+  date: string;
+  activeHours: number;
+  compliant: boolean;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'management' | 'settings'>('dashboard');
   
@@ -52,6 +58,7 @@ export default function App() {
     friendlyName: null
   });
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [compliance, setCompliance] = useState<ComplianceItem[]>([]);
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
   const [logs, setLogs] = useState<string[]>([]);
 
@@ -59,6 +66,7 @@ export default function App() {
   const [newLocId, setNewLocId] = useState('');
   const [newLocName, setNewLocName] = useState('');
   const [newLocTimezone, setNewLocTimezone] = useState('Europe/Budapest');
+  const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
 
   // Form states for editing location
   const [editingLocId, setEditingLocId] = useState<string | null>(null);
@@ -84,10 +92,13 @@ export default function App() {
         setDevices(devData);
         setIsBackendConnected(true);
 
-        // Auto-select first location if none selected
-        if (locData.length > 0 && !selectedLocationId) {
-          setSelectedLocationId(locData[0].id);
-        }
+        // Auto-select first location if none selected (using functional updater to avoid stale closures)
+        setSelectedLocationId(current => {
+          if (!current && locData.length > 0) {
+            return locData[0].id;
+          }
+          return current;
+        });
       } else {
         setIsBackendConnected(false);
       }
@@ -97,18 +108,21 @@ export default function App() {
     }
   };
 
-  // 2. Fetch Real-time Telemetry & History for the active location
+  // 2. Fetch Real-time Telemetry, History, and Compliance metrics for the active location
   const fetchTelemetryAndHistory = async () => {
     if (!selectedLocationId || !isBackendConnected) return;
     try {
       const telRes = await fetch(`${apiBaseUrl}/api/locations/${selectedLocationId}/telemetry`);
       const histRes = await fetch(`${apiBaseUrl}/api/locations/${selectedLocationId}/history`);
+      const compRes = await fetch(`${apiBaseUrl}/api/locations/${selectedLocationId}/compliance`);
       
-      if (telRes.ok && histRes.ok) {
+      if (telRes.ok && histRes.ok && compRes.ok) {
         const telData = await telRes.json();
         const histData = await histRes.json();
+        const compData = await compRes.json();
         setTelemetry(telData);
         setHistory(histData);
+        setCompliance(compData);
       }
     } catch (e) {
       console.error('Failed to fetch real-time telemetry:', e);
@@ -127,7 +141,34 @@ export default function App() {
     ];
     setLocations(mockLocs);
     setDevices(mockDevs);
-    if (!selectedLocationId) setSelectedLocationId(mockLocs[0].id);
+
+    // Generate mock compliance data for the last 7 calendar days
+    const mockCompliance = [];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const now = Date.now();
+    for (let i = 6; i >= 0; i--) {
+      const targetTime = now - i * 24 * 60 * 60 * 1000;
+      const d = new Date(targetTime);
+      const dayName = dayNames[d.getDay()];
+      const dateLabel = `${dayName}, ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+      
+      // Simulate that two of the days fail B-tariff compliance
+      const activeHours = i === 2 || i === 5 ? 6.8 : 8.2 + (i % 3) * 0.5;
+      mockCompliance.push({
+        date: dateLabel,
+        activeHours: activeHours,
+        compliant: activeHours >= 8.0
+      });
+    }
+    setCompliance(mockCompliance);
+
+    // Auto-select first location if none selected (using functional updater to avoid stale closures)
+    setSelectedLocationId(current => {
+      if (!current && mockLocs.length > 0) {
+        return mockLocs[0].id;
+      }
+      return current;
+    });
   };
 
   // Run mock simulator only if backend is disconnected
@@ -174,6 +215,36 @@ export default function App() {
 
   // --- API Handlers ---
   
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`${tempApiUrl}/api/health`);
+      if (res.ok) {
+        const data = await res.json();
+        setTestResult({
+          success: true,
+          message: `🟢 Connection Successful! Status: ${data.status} | API Version: ${data.version || '1.0.0'}`
+        });
+      } else {
+        setTestResult({
+          success: false,
+          message: `🔴 Connection Failed! Status code: ${res.status}`
+        });
+      }
+    } catch (e) {
+      setTestResult({
+        success: false,
+        message: `🔴 Connection Failed! Unable to reach backend server. Ensure backend is running and CORS is enabled.`
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   // Save Settings
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,21 +253,45 @@ export default function App() {
     setLogs(prev => [`[SYSTEM] Saved backend URL: ${tempApiUrl}`, ...prev]);
   };
 
+  // Helper to generate a URL slug from display name
+  const generateSlug = (name: string): string => {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')     // remove non-alphanumeric (except spaces/hyphens)
+      .replace(/[\s_-]+/g, '-')     // replace spaces and underscores with hyphens
+      .replace(/^-+|-+$/g, '');     // trim leading/trailing hyphens
+  };
+
+  const handleNameChange = (val: string) => {
+    setNewLocName(val);
+    if (!isSlugManuallyEdited) {
+      setNewLocId(generateSlug(val));
+    }
+  };
+
+  const handleSlugChange = (val: string) => {
+    setNewLocId(val.toLowerCase());
+    setIsSlugManuallyEdited(true);
+  };
+
   // Add Location
   const handleAddLocation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newLocId || !newLocName || !newLocTimezone) return;
+    const finalSlug = newLocId.trim() || generateSlug(newLocName);
+    if (!finalSlug || !newLocName || !newLocTimezone) return;
 
     if (isBackendConnected) {
       try {
         const res = await fetch(`${apiBaseUrl}/api/locations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: newLocId, name: newLocName, timezone: newLocTimezone })
+          body: JSON.stringify({ id: finalSlug, name: newLocName, timezone: newLocTimezone })
         });
         if (res.ok) {
           setNewLocId('');
           setNewLocName('');
+          setIsSlugManuallyEdited(false);
           fetchMetadata();
           setLogs(prev => [`[SYSTEM] Location '${newLocName}' created.`, ...prev]);
         }
@@ -204,9 +299,10 @@ export default function App() {
         console.error(err);
       }
     } else {
-      setLocations(prev => [...prev, { id: newLocId, name: newLocName, timezone: newLocTimezone }]);
+      setLocations(prev => [...prev, { id: finalSlug, name: newLocName, timezone: newLocTimezone }]);
       setNewLocId('');
       setNewLocName('');
+      setIsSlugManuallyEdited(false);
     }
   };
 
@@ -322,19 +418,30 @@ export default function App() {
     }
   };
 
-  // --- Calculate Last 24h Hourly Availability Strip ---
+  // --- Calculate Today's Hourly Availability Strip ---
   const getHourlyAvailabilityStrip = () => {
     const hours = [];
     const now = Date.now();
 
-    // Map 24 hour slots backwards
-    for (let i = 23; i >= 0; i--) {
-      const targetTime = now - i * 60 * 60 * 1000;
-      const hourLabel = new Date(targetTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Get midnight (start of today) in local timezone
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
 
-      // Find closest state change in history prior to or near this hour slot
-      
-      // Get closest point in time
+    // Map 24 hour slots of the current calendar day (00:00 to 23:00)
+    for (let i = 0; i < 24; i++) {
+      const targetTime = startOfDay.getTime() + i * 60 * 60 * 1000;
+      const hourLabel = `${i.toString().padStart(2, '0')}:00`;
+
+      // If this hour slot is in the future relative to now, mark it as future
+      if (targetTime > now) {
+        hours.push({
+          label: `${hourLabel} (Future)`,
+          active: null
+        });
+        continue;
+      }
+
+      // Get closest point in time in history
       let closestPoint: HistoryItem | null = null;
       let minDiff = Infinity;
       
@@ -494,7 +601,7 @@ export default function App() {
       {pendingDevices.length > 0 && !showEnrollForm && (
         <div className="pending-banner">
           <div style={{ color: '#f59e0b', fontWeight: 600 }}>
-            ⚠️ Discovered {pendingDevices.length} unassigned device hardware nodes.
+            ⚠️ Discovered {pendingDevices.length} unconfigured device(s).
           </div>
           <button className="btn-action" onClick={() => {
             setEnrollDeviceId(pendingDevices[0].id);
@@ -555,8 +662,8 @@ export default function App() {
           <div className="card col-12 status-hero">
             {(!telemetry.deviceId && isBackendConnected) ? (
               <div style={{ padding: '2rem' }}>
-                <h3 style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>No Active Node Bound</h3>
-                <p style={{ color: '#64748b' }}>Please map a device hardware UID to this location in the "Locations & Devices" tab.</p>
+                <h3 style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>No Active Device Bound</h3>
+                <p style={{ color: '#64748b' }}>Please map a device to this location in the "Locations & Devices" tab.</p>
               </div>
             ) : (
               <>
@@ -565,17 +672,17 @@ export default function App() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                   </svg>
                 </div>
-                <h2>{telemetry.gridActive ? 'OFF-PEAK (B-Tariff Active)' : 'ON-PEAK (A-Tariff Fallback)'}</h2>
-                <p>Telemetry Node: {telemetry.friendlyName || telemetry.deviceId || 'None'}</p>
+                <h2>{telemetry.gridActive ? 'OFF-PEAK (B-Tariff Active)' : 'ON-PEAK (B-Tariff Inactive)'}</h2>
+                <p>Device: {telemetry.friendlyName || telemetry.deviceId || 'None'}</p>
               </>
             )}
           </div>
 
-          {/* 24h Availability Strip Block */}
+          {/* Calendar Day Availability Strip Block */}
           {telemetry.deviceId && (
             <div className="card col-12">
-              <h4>Last 24 Hours Availability Strip</h4>
-              <p className="info-txt">Visualizes recent B-tariff active segments at a glance (24 hour blocks, latest on the right):</p>
+              <h4>Today's Availability Strip (Calendar Day)</h4>
+              <p className="info-txt">Visualizes B-tariff active segments for the current calendar day (from 00:00 to 23:00):</p>
               
               <div className="timeline-container">
                 <div className="strip">
@@ -587,7 +694,7 @@ export default function App() {
                       statusLabel = 'OFF-PEAK (B-Tariff Active)';
                     } else if (block.active === false) {
                       typeClass = 'inactive';
-                      statusLabel = 'ON-PEAK (A-Tariff Fallback)';
+                      statusLabel = 'ON-PEAK (B-Tariff Inactive)';
                     }
 
                     return (
@@ -613,6 +720,106 @@ export default function App() {
                     <span>No Records</span>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* DSO Contractual Compliance (7-Day Overview) */}
+          {telemetry.deviceId && (
+            <div className="card col-12" style={{ marginTop: '0rem' }}>
+              <h3>DSO B-Tariff Contractual Compliance (7-Day Overview)</h3>
+              <p className="info-txt">Checks if the utility provider has met the contractual daily minimum of 8.0 hours of B-tariff availability.</p>
+              
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1.25rem' }}>
+                {(() => {
+                  const now = Date.now();
+                  const last7Days = [];
+                  for (let i = 6; i >= 0; i--) {
+                    last7Days.push(new Date(now - i * 24 * 60 * 60 * 1000));
+                  }
+
+                  return last7Days.map((d, index) => {
+                    let matchedItem = null;
+                    if (isBackendConnected) {
+                      matchedItem = compliance.find(item => {
+                        const itemDate = new Date(item.date);
+                        if (isNaN(itemDate.getTime())) return false;
+                        return d.getFullYear() === itemDate.getFullYear() &&
+                               d.getMonth() === itemDate.getMonth() &&
+                               d.getDate() === itemDate.getDate();
+                      });
+                    } else {
+                      matchedItem = compliance[index];
+                    }
+
+                    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    const dayName = dayNames[d.getDay()];
+                    const subLabel = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+                    const hasData = !!matchedItem;
+                    const hoursVal = matchedItem ? `${matchedItem.activeHours.toFixed(1)}h` : 'N/A';
+                    const isCompliant = matchedItem ? matchedItem.compliant : false;
+                    const statusText = matchedItem ? (matchedItem.compliant ? 'COMPLIANT' : 'FAIL') : 'N/A';
+
+                    return (
+                      <div 
+                        key={index} 
+                        style={{ 
+                          flex: '1 1 calc(14.28% - 1rem)', 
+                          minWidth: '120px', 
+                          background: 'rgba(255,255,255,0.02)',
+                          border: hasData 
+                            ? (isCompliant ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(239, 68, 68, 0.25)')
+                            : '1px solid rgba(255, 255, 255, 0.05)',
+                          borderRadius: '0.75rem',
+                          padding: '1rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          textAlign: 'center',
+                          opacity: hasData ? 1.0 : 0.5,
+                          boxShadow: (hasData && !isCompliant) ? '0 0 10px rgba(239, 68, 68, 0.05)' : 'none'
+                        }}
+                      >
+                        <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#94a3b8' }}>{dayName}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.5rem' }}>{subLabel}</div>
+                        
+                        <div style={{ 
+                          fontSize: '1.5rem', 
+                          fontWeight: '700', 
+                          margin: '0.25rem 0', 
+                          color: hasData 
+                            ? (isCompliant ? '#10b981' : '#ef4444')
+                            : '#64748b' 
+                        }}>
+                          {hoursVal}
+                        </div>
+                        
+                        <span 
+                          style={{ 
+                            fontSize: '0.7rem', 
+                            fontWeight: '700', 
+                            padding: '0.15rem 0.5rem', 
+                            borderRadius: '9999px',
+                            background: hasData 
+                              ? (isCompliant ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)')
+                              : 'rgba(255, 255, 255, 0.05)',
+                            color: hasData 
+                              ? (isCompliant ? '#10b981' : '#ef4444')
+                              : '#64748b',
+                            border: hasData 
+                              ? (isCompliant ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)')
+                              : '1px solid rgba(255, 255, 255, 0.1)',
+                            marginTop: '0.25rem'
+                          }}
+                        >
+                          {statusText}
+                        </span>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}
@@ -710,12 +917,13 @@ export default function App() {
             <h3>Add New Location</h3>
             <form onSubmit={handleAddLocation} style={{ marginTop: '1rem' }}>
               <div className="form-group">
-                <label>Location ID Slug</label>
-                <input className="form-input" type="text" required placeholder="e.g. garage-contactor" value={newLocId} onChange={e => setNewLocId(e.target.value.toLowerCase())} />
+                <label>Display Name</label>
+                <input className="form-input" type="text" required placeholder="e.g. Detached Garage" value={newLocName} onChange={e => handleNameChange(e.target.value)} />
               </div>
               <div className="form-group">
-                <label>Display Name</label>
-                <input className="form-input" type="text" required placeholder="e.g. Outer Garage Contactor" value={newLocName} onChange={e => setNewLocName(e.target.value)} />
+                <label>Location ID Slug (Optional)</label>
+                <input className="form-input" type="text" placeholder="e.g. detached-garage" value={newLocId} onChange={e => handleSlugChange(e.target.value)} />
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Generated from name if left empty.</span>
               </div>
               <div className="form-group">
                 <label>Timezone</label>
@@ -727,8 +935,8 @@ export default function App() {
 
           {/* Locations & Mapped Devices List */}
           <div className="card col-8">
-            <h3>Locations Directory (Enforcing 1-Device Invariant)</h3>
-            <p className="info-txt">Each location can be bound to exactly one hardware sensor device.</p>
+            <h3>Locations Directory</h3>
+            <p className="info-txt">Each location can be bound to exactly one device.</p>
             
             {editingLocId && (
               <div className="enroll-form" style={{ marginBottom: '1.5rem' }}>
@@ -795,8 +1003,8 @@ export default function App() {
 
           {/* Registered Devices Panel */}
           <div className="card col-12" style={{ marginTop: '1.5rem' }}>
-            <h3>Registered Hardware Nodes</h3>
-            <p className="info-txt">A complete list of registered device nodes. You can unregister devices manually to delete them from the database.</p>
+            <h3>Registered Devices</h3>
+            <p className="info-txt">A complete list of registered devices. You can unregister devices manually to delete them from the database.</p>
             
             {devices.length === 0 ? (
               <div style={{ padding: '1rem', color: '#64748b', fontSize: '0.95rem' }}>No devices registered in the system.</div>
@@ -858,7 +1066,27 @@ export default function App() {
                 <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Used to retrieve SQLite registry files, enrollments, and route Flux history requests.</span>
               </div>
               
-              <button className="btn-action" style={{ marginTop: '0.5rem' }} type="submit">Save Settings</button>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                <button className="btn-action" type="submit">Save Settings</button>
+                <button className="btn-secondary" type="button" onClick={handleTestConnection} disabled={isTesting}>
+                  {isTesting ? 'Testing...' : 'Test Connection'}
+                </button>
+              </div>
+
+              {testResult && (
+                <div style={{ 
+                  marginTop: '1rem', 
+                  padding: '0.75rem', 
+                  borderRadius: '0.5rem',
+                  fontSize: '0.9rem',
+                  fontWeight: '600',
+                  border: testResult.success ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                  background: testResult.success ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                  color: testResult.success ? '#10b981' : '#ef4444'
+                }}>
+                  {testResult.message}
+                </div>
+              )}
             </form>
           </div>
         </div>

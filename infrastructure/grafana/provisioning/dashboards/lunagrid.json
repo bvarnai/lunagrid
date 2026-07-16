@@ -69,7 +69,7 @@
                   "color": "green"
                 },
                 "false": {
-                  "text": "ON-PEAK (A-Tariff Fallback)",
+                  "text": "ON-PEAK (B-Tariff Inactive)",
                   "color": "red"
                 }
               }
