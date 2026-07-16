@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # MQTT Broker - Central message queue for device telemetry
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: lunagrid-mosquitto
+    ports:
+      - "1883:1883"   # Unencrypted (testing/development)
+      - "9001:9001"   # WebSockets (frontend integration)
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    restart: unless-stopped
+
+  # Time-Series Database - Storing telemetry and grid transition logs
+  influxdb:
+    image: influxdb:2.7
+    container_name: lunagrid-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=lunagrid_secure_pass123
+      - DOCKER_INFLUXDB_INIT_ORG=lunagrid-org
+      - DOCKER_INFLUXDB_INIT_BUCKET=lunagrid-telemetry
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    restart: unless-stopped
+
+  # Ingestion Agent - Routes raw MQTT messages to InfluxDB buckets
+  telegraf:
+    image: telegraf:1.30
+    container_name: lunagrid-telegraf
+    depends_on:
+      - mosquitto
+      - influxdb
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    restart: unless-stopped
+
+  # Backend Engine - Houses custom APIs and WebSocket servers
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: lunagrid-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MQTT_BROKER_URL=mqtt://mosquitto:1883
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+
+  # Grafana Dashboard - Renders availability timelines and metrics
+  grafana:
+    image: grafana/grafana:10.4
+    container_name: lunagrid-grafana
+    ports:
+      - "3001:3000"   # Mapped to port 3001 on the host to avoid standard port conflicts
+    depends_on:
+      - influxdb
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  influxdb-data:
+  grafana-data:

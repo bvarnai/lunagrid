@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LunagridTelemetryPayloads",
+  "description": "JSON Schemas for telemetry and state events produced by Project Lunagrid devices",
+  "type": "object",
+  "definitions": {
+    "telemetry": {
+      "type": "object",
+      "required": ["timestamp", "device_id", "metrics", "status"],
+      "properties": {
+        "timestamp": {
+          "type": "integer",
+          "description": "UNIX epoch timestamp in seconds"
+        },
+        "device_id": {
+          "type": "string",
+          "description": "Unique identifier of the device (MAC address based)"
+        },
+        "metrics": {
+          "type": "object",
+          "required": ["grid_active", "uptime_seconds", "free_heap_bytes"],
+          "properties": {
+            "grid_active": { "type": "boolean" },
+            "uptime_seconds": { "type": "integer", "minimum": 0 },
+            "free_heap_bytes": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "status": {
+          "type": "object",
+          "required": ["wifi_rssi", "error_code"],
+          "properties": {
+            "wifi_rssi": { "type": "integer", "minimum": -120, "maximum": 0 },
+            "error_code": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "state_event": {
+      "type": "object",
+      "required": ["timestamp", "device_id", "event", "grid_active"],
+      "properties": {
+        "timestamp": { "type": "integer" },
+        "device_id": { "type": "string" },
+        "event": { "type": "string", "const": "GRID_STATE_CHANGED" },
+        "grid_active": { "type": "boolean" }
+      }
+    }
+  }
+}

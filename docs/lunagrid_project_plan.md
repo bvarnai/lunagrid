@@ -121,6 +121,9 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 
 ## 4. Firmware Engine & Edge Computing
 
+> [!NOTE]
+> For step-by-step instructions on setting up the local build environment, configuring WSL2/usbipd, and compiling/flashing the firmware, refer to the [Firmware Development Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_development.md).
+
 ### 4.1 State Machine Architecture
 *   `BOOT` -> Initialize GPIOs, configure internal pull-up on GPIO 2, mount LittleFS file system, read last known state.
 *   `CONNECTING_WIFI` -> Turn on Wi-Fi, attempt connection to configured SSID. If connection fails after 30 seconds, boot local Captive Portal for Wi-Fi provisioning.
