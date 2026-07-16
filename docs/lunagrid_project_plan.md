@@ -147,19 +147,24 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 *   **Authentication:** TLS certificate authority verification + MQTT Username & Password authentication.
 
 ### 5.2 Data Routing & Storage Layers
-*   **Ingestion Routing:** Telegraf agent or Node-RED workflow subscribing to topic `lunagrid/devices/+/state`.
-*   **Time-Series Storage:** InfluxDB v2 or TimescaleDB. Each entry logs:
-    *   Measurement: `grid_status`
-    *   Tag: `device_id`
-    *   Fields: `active` (boolean), `rssi` (integer)
-*   **Cold Path Archival:** Weekly backups of InfluxDB buckets exported to CSV or Parquet files for long-term historical grid behavior profiling.
+*   **Ingestion Routing:** Telegraf agent subscribing to topic `lunagrid/devices/+/state` and writing raw fields directly to InfluxDB.
+*   **Secure API Database Bridge:** To shield InfluxDB access tokens from the web browser, the Node.js Express server acts as a secure broker. The frontend client queries standard endpoints like `GET /api/locations/:id/history` and `/api/locations/:id/compliance`, which are translated securely into Flux queries and forwarded to InfluxDB.
+*   **Relational Metadata Registry:** An SQLite database handles the 1-to-1 mappings of physical devices to locations. This database path is configurable via `DATABASE_PATH` and persisted across container rebuilds via a Docker named volume (`backend-db` mapped to `/data`).
+*   **InfluxDB Retention Policy:** The `lunagrid-telemetry` bucket has an initial retention policy set to **30 days (`30d`)** in `docker-compose.yml` to automatically purge high-frequency raw 2s telemetry signals and prevent disk space exhaustion.
 
 ### 5.3 Visualization & End-User Interface
-*   **Grafana Dashboard panels:**
-    1.  **State Indicator:** A large SingleStat panel showing "OFF-PEAK (B-Tariff Active)" (Green) or "ON-PEAK (B-Tariff Inactive)" (Red) representing "éjszakai áram" availability.
-    2.  **State Timeline:** Visual representation of ON/OFF state transitions throughout the day, showing the exact times B-tariff was active.
-    3.  **Accumulated Usage:** Bar chart tracking daily total active hours (verifying compliance with the 8-hour DSO minimum requirement).
-    4.  **Health Monitor:** Line chart tracking Wi-Fi RSSI and device free heap over time.
+*   **Single-Page React Portal:** Built as a tabbed web interface optimized for modern desktop layouts:
+    1.  **Dashboard Tab:**
+        *   **Grid State Hero:** Real-time B-tariff status reading either `OFF-PEAK (B-Tariff Active)` (Green) or `ON-PEAK (B-Tariff Inactive)` (Red).
+        *   **Today's Availability Strip:** A 24-segment timeline strip visualizing B-tariff active hours for the current calendar day (from 00:00 to 23:00).
+        *   **Contractual Compliance (7-Day Overview):** 7 calendar blocks calculating B-tariff hours per day. Marks days **`🟢 COMPLIANT`** (hours >= 8.0) or **`🔴 FAIL`** (hours < 8.0). Renders as **`⚫ N/A`** for days with missing telemetry.
+        *   **Diagnostic Parameters:** Real-time RSSI signal quality badges, heap size, and formatted uptime.
+        *   **Stretched Activity Console Logs:** Displays rolling logs with client-side local timezone formatting.
+    2.  **Locations & Devices Tab:** Create locations, map device registrations, and unregister devices manually.
+    3.  **Source Settings Tab:** Configure API endpoints, test backend health (visualizing API versioning), and toggle diagnostic logging.
+*   **Traffic & Bandwidth Optimizations:**
+    *   **Tab Inactivity Detection:** All API polling loops automatically pause when the browser tab is hidden (`document.hidden`).
+    *   **Conditional Log Polling:** Activity logs are only fetched from the backend when the diagnostics toggle is checked in Settings, reducing REST endpoint overhead.
 
 ---
 
