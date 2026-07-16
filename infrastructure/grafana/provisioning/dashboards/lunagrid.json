@@ -65,11 +65,11 @@
               "type": "value",
               "options": {
                 "true": {
-                  "text": "ON-PEAK (Active Power)",
+                  "text": "OFF-PEAK (B-Tariff Active)",
                   "color": "green"
                 },
                 "false": {
-                  "text": "OFF-PEAK (No Power)",
+                  "text": "ON-PEAK (A-Tariff Fallback)",
                   "color": "red"
                 }
               }

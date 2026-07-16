@@ -443,7 +443,7 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
             </svg>
           </div>
-          <h2>{telemetry.gridActive ? 'ACTIVE (ON-PEAK)' : 'INACTIVE (OFF-PEAK)'}</h2>
+          <h2>{telemetry.gridActive ? 'OFF-PEAK (B-Tariff Active)' : 'ON-PEAK (A-Tariff Fallback)'}</h2>
           <p>Controlled Grid Tariff Status (Éjszakai Áram)</p>
         </div>
 

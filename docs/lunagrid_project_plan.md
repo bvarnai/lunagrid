@@ -156,7 +156,7 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 
 ### 5.3 Visualization & End-User Interface
 *   **Grafana Dashboard panels:**
-    1.  **State Indicator:** A large SingleStat panel showing "ONLINE / ON-PEAK" (Green) or "OFF-PEAK" (Red) representing "éjszakai áram" availability.
+    1.  **State Indicator:** A large SingleStat panel showing "OFF-PEAK (B-Tariff Active)" (Green) or "ON-PEAK (A-Tariff Fallback)" (Red) representing "éjszakai áram" availability.
     2.  **State Timeline:** Visual representation of ON/OFF state transitions throughout the day, showing the exact times B-tariff was active.
     3.  **Accumulated Usage:** Bar chart tracking daily total active hours (verifying compliance with the 8-hour DSO minimum requirement).
     4.  **Health Monitor:** Line chart tracking Wi-Fi RSSI and device free heap over time.
