@@ -22,7 +22,7 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 |  [A Tarifa (230V AC)] (Always-On)  | -+       |  NO Contacts (1/2)                   |
 +------------------------------------+  |       +-------------------+------------------+
                                         |                           |
-                                        v                           | GPIO 2 (Internal Pull-Up) / GND
+                                        v                           | GPIO 3 (Internal Pull-Up) / GND
                               +------------------+                  v
                               | USB Power Adapt. | -------> [ ESP32-C3 Super Mini ]
                               | (5V DC USB-C)    |          [ (RISC-V, 4MB Flash) ]
@@ -65,7 +65,7 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 ### 2.2 Sensor & Actuator Interface Matrix
 | Sensor/Actuator ID | Interface Type | Pin Allocation | Sampling Frequency | Operating Voltage |
 | :--- | :--- | :--- | :--- | :--- |
-| `SEN_GRID_B_CONTACTOR` | Digital Input (Dry Contact) | GPIO 2 (SDA) -> NO Terminal 1<br>GND -> NO Terminal 2 | Interrupt-driven (State changes) | 3.3V (Internal pull-up on MCU) |
+| `SEN_GRID_B_CONTACTOR` | Digital Input (Dry Contact) | GPIO 3 (RX) -> NO Terminal 1<br>GND -> NO Terminal 2 | Interrupt-driven (State changes) | 3.3V (Internal pull-up on MCU) |
 | `LED_STATUS_BOARD` | Digital Output | GPIO 8 | Event-driven (Wi-Fi, MQTT state) | 3.3V (On-board blue LED) |
 
 ### 2.3 Power Management Profile
@@ -198,7 +198,7 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 ## 8. Verification, Testing & Deployment Roadmap
 
 ### 8.1 Test Plan Matrix
-*   **Dry Contact Logic Test:** Verify that shorting GPIO 2 to GND manually triggers a state change log to serial console and publishes an MQTT payload.
+*   **Dry Contact Logic Test:** Verify that shorting GPIO 3 to GND manually triggers a state change log to serial console and publishes an MQTT payload.
 *   **Contactor Operation Test:** Connect the IKA20-11 coil to a switched 230V AC test bench. Verify the contactor clicks on/off and the dry contacts open/close reliably without overheating.
 *   **Debounce Test:** Introduce synthetic contact bouncing on the input pin to ensure the 100 ms software debounce logic successfully logs only one event.
 *   **Network Interruption Test:** Power off the Wi-Fi router. Verify the device switches to LittleFS local buffering. Turn the router back on and verify that buffered events are published with their original NTP-synchronized timestamps.

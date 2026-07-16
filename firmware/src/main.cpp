@@ -1,16 +1,17 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <time.h>
 
 // --- Configuration ---
 // Modify these to match your local WiFi network and host machine IP
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
-const char* mqtt_server = "192.168.1.100"; // Host PC's IP running Docker container
+const char* ssid = "VBL";
+const char* password = "Mentor19";
+const char* mqtt_server = "192.168.48.220"; // Host PC's IP running Docker container
 const int mqtt_port = 1883;
 
 // GPIO Pins
-#define SEN_GRID_B_CONTACTOR 2
+#define SEN_GRID_B_CONTACTOR 3
 #define LED_STATUS_BOARD 8
 
 // Client instances
@@ -78,15 +79,20 @@ void setupWifi() {
   Serial.println("[WIFI] Connected successfully!");
   Serial.print("[WIFI] IP Address: ");
   Serial.println(WiFi.localIP());
+
+  // Configure NTP for time synchronization
+  Serial.println("[TIME] Configuring SNTP...");
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 }
 
 // Publish B-tariff Grid State transition to MQTT broker
 void publishGridState(bool active) {
   char payload[256];
+  time_t now = time(nullptr);
   // Build State payload matching plan
   snprintf(payload, sizeof(payload), 
-           "{\"device_id\":\"%s\",\"event\":\"GRID_STATE_CHANGED\",\"grid_active\":%s}", 
-           deviceId, active ? "true" : "false");
+           "{\"timestamp\":%lld,\"device_id\":\"%s\",\"event\":\"GRID_STATE_CHANGED\",\"grid_active\":%s}", 
+           (long long)now, deviceId, active ? "true" : "false");
   
   Serial.print("[MQTT] Publishing state change to: ");
   Serial.println(stateTopic);
@@ -106,11 +112,11 @@ void publishTelemetry(bool active) {
   long rssi = WiFi.RSSI();
   unsigned long uptime = millis() / 1000;
   uint32_t freeHeap = ESP.getFreeHeap();
+  time_t now = time(nullptr);
   
-  // Build Telemetry payload matching backend structure
   snprintf(payload, sizeof(payload), 
-           "{\"device_id\":\"%s\",\"metrics\":{\"grid_active\":%s,\"uptime_seconds\":%lu,\"free_heap_bytes\":%u},\"status\":{\"wifi_rssi\":%ld,\"error_code\":0}}", 
-           deviceId, active ? "true" : "false", uptime, freeHeap, rssi);
+           "{\"timestamp\":%lld,\"device_id\":\"%s\",\"metrics\":{\"grid_active\":%s,\"uptime_seconds\":%lu,\"free_heap_bytes\":%u},\"status\":{\"wifi_rssi\":%ld,\"error_code\":0}}", 
+           (long long)now, deviceId, active ? "true" : "false", uptime, freeHeap, rssi);
   
   Serial.print("[MQTT] Publishing telemetry to: ");
   Serial.println(telemetryTopic);
