@@ -15,12 +15,12 @@ graph TD
     end
 
     subgraph "Synology NAS (nas48.vbl.hu)"
-        Nginx[Nginx (Host Network)]
-        MQTT[Mosquitto Broker (1883/9001)]
-        Influx[InfluxDB 2.7 (8086)]
-        Tele[Telegraf Ingestion]
-        Backend[Node.js Backend (3002)]
-        Grafana[Grafana (Existing, 3000)]
+        Nginx["Nginx (Host Network)]"
+        MQTT["Mosquitto Broker (1883/9001)"]
+        Influx["InfluxDB 2.7 (8086)"]
+        Tele["Telegraf Ingestion"]
+        Backend["Node.js Backend (3002)"]
+        Grafana["Grafana (Existing, 3000)"]
     end
 
     %% Client/Browser Connections
