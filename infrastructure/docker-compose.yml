@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MQTT Broker - Central message queue for device telemetry
   mosquitto:
@@ -24,6 +22,7 @@ services:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=admin
       - DOCKER_INFLUXDB_INIT_PASSWORD=lunagrid_secure_pass123
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=lunagrid_secure_pass123
       - DOCKER_INFLUXDB_INIT_ORG=lunagrid-org
       - DOCKER_INFLUXDB_INIT_BUCKET=lunagrid-telemetry
     volumes:
@@ -58,7 +57,7 @@ services:
 
   # Grafana Dashboard - Renders availability timelines and metrics
   grafana:
-    image: grafana/grafana:10.4
+    image: grafana/grafana:10.4.0
     container_name: lunagrid-grafana
     ports:
       - "3001:3000"   # Mapped to port 3001 on the host to avoid standard port conflicts
@@ -66,6 +65,7 @@ services:
       - influxdb
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
     restart: unless-stopped
 
 volumes:
