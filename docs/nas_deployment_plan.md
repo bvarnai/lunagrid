@@ -14,7 +14,7 @@ graph TD
         ESP[ESP32-C3 Node]
     end
 
-    subgraph Synology NAS (nas48.vbl.hu)
+    subgraph "Synology NAS (nas48.vbl.hu)"
         Nginx[Nginx (Host Network)]
         MQTT[Mosquitto Broker (1883/9001)]
         Influx[InfluxDB 2.7 (8086)]
