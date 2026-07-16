@@ -19,7 +19,7 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 |  [B Tarifa (230V AC)] (Switched)   | -------- |  IKA20-11 Contactor Coil (A1/A2)     |
 |                                    |          |  (Complete Galvanic Isolation)       |
 |                                    |          |                                      |
-|  [A Tarifa (230V AC)] (Always-On)  | -+       |  NO Contacts (13/14)                 |
+|  [A Tarifa (230V AC)] (Always-On)  | -+       |  NO Contacts (1/2)                   |
 +------------------------------------+  |       +-------------------+------------------+
                                         |                           |
                                         v                           | GPIO 2 (Internal Pull-Up) / GND
@@ -65,7 +65,7 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 ### 2.2 Sensor & Actuator Interface Matrix
 | Sensor/Actuator ID | Interface Type | Pin Allocation | Sampling Frequency | Operating Voltage |
 | :--- | :--- | :--- | :--- | :--- |
-| `SEN_GRID_B_CONTACTOR` | Digital Input (Dry Contact) | GPIO 2 (SDA) -> NO Contact<br>GND -> Common Contact | Interrupt-driven (State changes) | 3.3V (Internal pull-up on MCU) |
+| `SEN_GRID_B_CONTACTOR` | Digital Input (Dry Contact) | GPIO 2 (SDA) -> NO Terminal 1<br>GND -> NO Terminal 2 | Interrupt-driven (State changes) | 3.3V (Internal pull-up on MCU) |
 | `LED_STATUS_BOARD` | Digital Output | GPIO 8 | Event-driven (Wi-Fi, MQTT state) | 3.3V (On-board blue LED) |
 
 ### 2.3 Power Management Profile

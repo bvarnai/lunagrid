@@ -50,3 +50,8 @@ cd firmware
 pio run --target upload
 ```
 
+## 🤖 AI Disclosure
+
+![AI Assisted](https://img.shields.io/badge/AI-Assisted-blue?style=flat-square)
+
+This project was developed with the assistance of AI tools (Gemini). All AI-generated code has been reviewed, tested, and manually refined.
