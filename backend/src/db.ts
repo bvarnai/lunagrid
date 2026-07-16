@@ -1,8 +1,8 @@
 import sqlite3 from 'sqlite3';
 import path from 'path';
 
-// Resolve database path
-const dbPath = path.resolve('lunagrid.db');
+// Resolve database path from environment variable or fallback to default
+const dbPath = path.resolve(process.env.DATABASE_PATH || 'lunagrid.db');
 
 console.log(`[DATABASE] Opening SQLite database at ${dbPath}`);
 const db = new sqlite3.Database(dbPath);

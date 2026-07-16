@@ -51,6 +51,9 @@ services:
     environment:
       - PORT=3000
       - MQTT_BROKER_URL=mqtt://mosquitto:1883
+      - DATABASE_PATH=/data/lunagrid.db
+    volumes:
+      - backend-db:/data
     depends_on:
       - mosquitto
     restart: unless-stopped
@@ -73,3 +76,4 @@ volumes:
   mosquitto-log:
   influxdb-data:
   grafana-data:
+  backend-db:

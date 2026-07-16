@@ -111,21 +111,38 @@ export default function App() {
   // 2. Fetch Real-time Telemetry, History, and Compliance metrics for the active location
   const fetchTelemetryAndHistory = async () => {
     if (!selectedLocationId || !isBackendConnected) return;
+    
+    // Fetch telemetry
     try {
       const telRes = await fetch(`${apiBaseUrl}/api/locations/${selectedLocationId}/telemetry`);
-      const histRes = await fetch(`${apiBaseUrl}/api/locations/${selectedLocationId}/history`);
-      const compRes = await fetch(`${apiBaseUrl}/api/locations/${selectedLocationId}/compliance`);
-      
-      if (telRes.ok && histRes.ok && compRes.ok) {
+      if (telRes.ok) {
         const telData = await telRes.json();
-        const histData = await histRes.json();
-        const compData = await compRes.json();
         setTelemetry(telData);
-        setHistory(histData);
-        setCompliance(compData);
       }
     } catch (e) {
       console.error('Failed to fetch real-time telemetry:', e);
+    }
+
+    // Fetch history
+    try {
+      const histRes = await fetch(`${apiBaseUrl}/api/locations/${selectedLocationId}/history`);
+      if (histRes.ok) {
+        const histData = await histRes.json();
+        setHistory(histData);
+      }
+    } catch (e) {
+      console.error('Failed to fetch real-time history:', e);
+    }
+
+    // Fetch compliance
+    try {
+      const compRes = await fetch(`${apiBaseUrl}/api/locations/${selectedLocationId}/compliance`);
+      if (compRes.ok) {
+        const compData = await compRes.json();
+        setCompliance(compData);
+      }
+    } catch (e) {
+      console.error('Failed to fetch real-time compliance:', e);
     }
   };
 

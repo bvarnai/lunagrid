@@ -217,7 +217,7 @@ app.get('/api/locations/:id/compliance', async (req, res) => {
   |> range(start: -7d)
   |> filter(fn: (r) => r["_measurement"] == "mqtt_consumer" and r["device_id"] == "${device.id}")
   |> filter(fn: (r) => r["_field"] == "grid_active")
-  |> map(fn: (r) => ({ r with _value: if r._value == "true" or r._value == true then 1.0 else 0.0 }))
+  |> map(fn: (r) => ({ r with _value: if string(v: r._value) == "true" then 1.0 else 0.0 }))
   |> aggregateWindow(every: 1h, fn: mean, createEmpty: false)
   |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)
   |> keep(columns: ["_time", "_value"])`;
