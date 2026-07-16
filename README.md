@@ -50,6 +50,15 @@ cd firmware
 pio run --target upload
 ```
 
+### 3.4 Simulate a Hardware Device
+For testing without physical hardware, run the Node-based CLI simulator to publish mock telemetry and state transitions to the broker:
+```bash
+cd backend
+npm run simulate -- --id lunagrid_c3_simulated --interval 5
+```
+You can customize the parameters (e.g., changing `--id` or setting `--active false`). Check `tools/simulate_device.js` for all available options.
+
+
 ## 🤖 AI Disclosure
 
 ![AI Assisted](https://img.shields.io/badge/AI-Assisted-blue?style=flat-square)
