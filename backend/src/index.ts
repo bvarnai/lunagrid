@@ -51,7 +51,25 @@ interface CachedTelemetry {
 
 const telemetryCache: Record<string, CachedTelemetry> = {};
 
+// --- In-Memory Rolling Ingestion Logs Buffer ---
+interface LogEntry {
+  timestamp: number;
+  message: string;
+}
+const logBuffer: LogEntry[] = [];
+const addLog = (message: string) => {
+  logBuffer.unshift({ timestamp: Date.now(), message });
+  if (logBuffer.length > 50) {
+    logBuffer.pop();
+  }
+};
+
 // --- REST API Endpoints ---
+
+// Serve rolling ingestion logs
+app.get('/api/logs', (req, res) => {
+  res.json(logBuffer);
+});
 
 // API Index Welcome
 app.get('/', (req, res) => {
@@ -370,9 +388,13 @@ const startServer = async () => {
         status: device?.status || 'PENDING'
       };
 
-      console.log(`[INGEST] Type: ${messageType.toUpperCase()} | Device: ${deviceId} | Location: ${enrichedPayload.location_id || 'UNASSIGNED'} | State: ${telemetryCache[deviceId].gridActive}`);
+      const statusText = telemetryCache[deviceId].gridActive ? 'OFF-PEAK (B-Tariff Active)' : 'ON-PEAK (B-Tariff Inactive)';
+      const logLine = `Type: ${messageType.toUpperCase()} | Device: ${deviceId} | Location: ${enrichedPayload.location_id || 'UNASSIGNED'} | State: ${statusText}`;
+      console.log(`[INGEST] ${logLine}`);
+      addLog(logLine);
     } catch (error) {
       console.error(`[INGEST] Failed to process message on ${topic}:`, error);
+      addLog(`ERROR: Failed to process message on ${topic} - ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 };

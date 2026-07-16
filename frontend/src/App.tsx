@@ -43,6 +43,11 @@ export default function App() {
   });
   const [tempApiUrl, setTempApiUrl] = useState<string>(apiBaseUrl);
 
+  const [showDiagnostics, setShowDiagnostics] = useState<boolean>(() => {
+    return localStorage.getItem('lunagrid_show_diagnostics') === 'true';
+  });
+  const [tempShowDiagnostics, setTempShowDiagnostics] = useState<boolean>(showDiagnostics);
+
   const [locations, setLocations] = useState<Location[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('');
@@ -144,6 +149,23 @@ export default function App() {
     } catch (e) {
       console.error('Failed to fetch real-time compliance:', e);
     }
+
+    // Fetch ingestion logs (only if diagnostics mode is enabled by user)
+    if (showDiagnostics) {
+      try {
+        const logsRes = await fetch(`${apiBaseUrl}/api/logs`);
+        if (logsRes.ok) {
+          const logsData: Array<{ timestamp: number; message: string }> = await logsRes.json();
+          const formatted = logsData.map(log => {
+            const timeStr = new Date(log.timestamp).toLocaleTimeString();
+            return `[${timeStr}] ${log.message}`;
+          });
+          setLogs(formatted);
+        }
+      } catch (e) {
+        console.error('Failed to fetch real-time logs:', e);
+      }
+    }
   };
 
   // Populate mock data if backend offline (so the app works standalone)
@@ -194,10 +216,11 @@ export default function App() {
     
     // Simulate real-time logs/telemetry locally
     const timer = setInterval(() => {
+      if (document.hidden) return; // Pause simulator updates when tab is inactive
       setTelemetry(prev => {
         const toggleState = Math.random() < 0.1;
         const newGridState = toggleState ? !prev.gridActive : prev.gridActive;
-        if (toggleState) {
+        if (toggleState && showDiagnostics) {
           const now = new Date().toLocaleTimeString();
           setLogs(prevLogs => [`[${now}] Mock Grid toggled to ${newGridState ? 'OFF-PEAK' : 'ON-PEAK'}`, ...prevLogs.slice(0, 5)]);
         }
@@ -214,21 +237,29 @@ export default function App() {
     }, 2000);
 
     return () => clearInterval(timer);
-  }, [isBackendConnected, selectedLocationId]);
+  }, [isBackendConnected, selectedLocationId, showDiagnostics]);
 
   // Handle periodic metadata fetching
   useEffect(() => {
-    fetchMetadata();
-    const interval = setInterval(fetchMetadata, 4000);
+    const poll = () => {
+      if (document.hidden) return; // Pause polling when tab is inactive
+      fetchMetadata();
+    };
+    poll();
+    const interval = setInterval(poll, 4000);
     return () => clearInterval(interval);
   }, [apiBaseUrl]);
 
   // Handle periodic telemetry polling
   useEffect(() => {
-    fetchTelemetryAndHistory();
-    const interval = setInterval(fetchTelemetryAndHistory, 2000);
+    const poll = () => {
+      if (document.hidden) return; // Pause polling when tab is inactive
+      fetchTelemetryAndHistory();
+    };
+    poll();
+    const interval = setInterval(poll, 2000);
     return () => clearInterval(interval);
-  }, [selectedLocationId, isBackendConnected]);
+  }, [selectedLocationId, isBackendConnected, showDiagnostics]);
 
   // --- API Handlers ---
   
@@ -267,7 +298,11 @@ export default function App() {
     e.preventDefault();
     localStorage.setItem('lunagrid_api_url', tempApiUrl);
     setApiBaseUrl(tempApiUrl);
-    setLogs(prev => [`[SYSTEM] Saved backend URL: ${tempApiUrl}`, ...prev]);
+    
+    localStorage.setItem('lunagrid_show_diagnostics', tempShowDiagnostics ? 'true' : 'false');
+    setShowDiagnostics(tempShowDiagnostics);
+    
+    setLogs(prev => [`[SYSTEM] Saved backend settings. Diagnostics: ${tempShowDiagnostics ? 'ENABLED' : 'DISABLED'}`, ...prev]);
   };
 
   // Helper to generate a URL slug from display name
@@ -912,18 +947,20 @@ export default function App() {
             </div>
           </div>
 
-          {/* Activity Console logs (Stretched to col-12 at the bottom) */}
-          <div className="card col-12" style={{ marginTop: '0rem' }}>
-            <h3>Console Activity Logs</h3>
-            <p className="info-txt">Stretched monitor view displaying raw ingestion logs, MQTT events, and enrollment events in full width.</p>
-            <div className="logs-container" style={{ marginTop: '1rem' }}>
-              {logs.length === 0 ? (
-                <div style={{ color: '#4b5563' }}>Awaiting active telemetry streams...</div>
-              ) : (
-                logs.map((log, idx) => <div key={idx} className="log-entry" style={{ wordBreak: 'break-all' }}>{log}</div>)
-              )}
+          {/* Activity Console logs (Stretched to col-12 at the bottom, conditional on user setting) */}
+          {showDiagnostics && (
+            <div className="card col-12" style={{ marginTop: '0rem' }}>
+              <h3>Console Activity Logs</h3>
+              <p className="info-txt">Stretched monitor view displaying raw ingestion logs, MQTT events, and enrollment events in full width.</p>
+              <div className="logs-container" style={{ marginTop: '1rem' }}>
+                {logs.length === 0 ? (
+                  <div style={{ color: '#4b5563' }}>Awaiting active telemetry streams...</div>
+                ) : (
+                  logs.map((log, idx) => <div key={idx} className="log-entry" style={{ wordBreak: 'break-all' }}>{log}</div>)
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -1081,6 +1118,19 @@ export default function App() {
                 <label>Backend REST API Base URL</label>
                 <input className="form-input" type="url" value={tempApiUrl} onChange={e => setTempApiUrl(e.target.value)} placeholder="http://localhost:3000" required />
                 <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Used to retrieve SQLite registry files, enrollments, and route Flux history requests.</span>
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.65rem', marginTop: '1.25rem' }}>
+                <input 
+                  type="checkbox" 
+                  id="showDiagnostics" 
+                  checked={tempShowDiagnostics} 
+                  onChange={e => setTempShowDiagnostics(e.target.checked)} 
+                  style={{ width: '1.15rem', height: '1.15rem', cursor: 'pointer', margin: 0 }}
+                />
+                <label htmlFor="showDiagnostics" style={{ cursor: 'pointer', fontSize: '0.925rem', userSelect: 'none', fontWeight: '500' }}>
+                  Enable Diagnostic Console Logs on Dashboard
+                </label>
               </div>
               
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>

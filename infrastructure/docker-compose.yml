@@ -25,6 +25,7 @@ services:
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=lunagrid_secure_pass123
       - DOCKER_INFLUXDB_INIT_ORG=lunagrid-org
       - DOCKER_INFLUXDB_INIT_BUCKET=lunagrid-telemetry
+      - DOCKER_INFLUXDB_INIT_RETENTION=30d
     volumes:
       - influxdb-data:/var/lib/influxdb2
     restart: unless-stopped
