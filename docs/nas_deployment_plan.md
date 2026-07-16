@@ -15,7 +15,7 @@ graph TD
     end
 
     subgraph "Synology NAS (nas48.vbl.hu)"
-        Nginx["Nginx (Host Network)]"
+        Nginx["Nginx (Host Network)"]
         MQTT["Mosquitto Broker (1883/9001)"]
         Influx["InfluxDB 2.7 (8086)"]
         Tele["Telegraf Ingestion"]
