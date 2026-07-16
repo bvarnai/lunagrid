@@ -7,7 +7,7 @@
 // Modify these to match your local WiFi network and host machine IP
 const char* ssid = "VBL";
 const char* password = "Mentor19";
-const char* mqtt_server = "192.168.48.220"; // Host PC's IP running Docker container
+const char* mqtt_server = "mqtt.nas48.vbl.hu"; // Replace with your NAS local IP or DNS
 const int mqtt_port = 1883;
 
 // GPIO Pins
