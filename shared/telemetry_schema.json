@@ -27,10 +27,11 @@
         },
         "status": {
           "type": "object",
-          "required": ["wifi_rssi", "error_code"],
+          "required": ["wifi_rssi", "error_code", "firmware_version"],
           "properties": {
             "wifi_rssi": { "type": "integer", "minimum": -120, "maximum": 0 },
-            "error_code": { "type": "integer" }
+            "error_code": { "type": "integer" },
+            "firmware_version": { "type": "string" }
           }
         }
       }

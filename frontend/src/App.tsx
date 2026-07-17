@@ -21,6 +21,27 @@ interface Telemetry {
   timestamp: number;
   deviceId: string | null;
   friendlyName: string | null;
+  firmwareVersion: string | null;
+}
+
+interface FirmwareRelease {
+  version: string;
+  url: string;
+  description: string;
+  released_at?: string;
+}
+
+interface RolloutStatus {
+  version: string;
+  totalCount: number;
+  updatedCount: number;
+  percentage: number;
+  devices: Array<{
+    deviceId: string;
+    friendlyName: string | null;
+    currentVersion: string;
+    isUpdated: boolean;
+  }>;
 }
 
 interface HistoryItem {
@@ -62,12 +83,21 @@ export default function App() {
     wifiRssi: 0,
     timestamp: 0,
     deviceId: null,
-    friendlyName: null
+    friendlyName: null,
+    firmwareVersion: null
   });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [compliance, setCompliance] = useState<ComplianceItem[]>([]);
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
   const [logs, setLogs] = useState<string[]>([]);
+
+  // Firmware Releases & Rollout States
+  const [releases, setReleases] = useState<FirmwareRelease[]>([]);
+  const [newReleaseVersion, setNewReleaseVersion] = useState('');
+  const [newReleaseUrl, setNewReleaseUrl] = useState('');
+  const [newReleaseDesc, setNewReleaseDesc] = useState('');
+  const [rolloutTargetVersion, setRolloutTargetVersion] = useState<string>('');
+  const [rolloutStatus, setRolloutStatus] = useState<RolloutStatus | null>(null);
 
   // Persist selected location ID in LocalStorage when changed
   useEffect(() => {
@@ -95,11 +125,12 @@ export default function App() {
   const [enrollLocationId, setEnrollLocationId] = useState('');
   const [showEnrollForm, setShowEnrollForm] = useState(false);
 
-  // 1. Fetch Metadata (Locations & Devices)
+  // 1. Fetch Metadata (Locations, Devices, and Releases)
   const fetchMetadata = async () => {
     try {
       const locRes = await fetch(`${apiBaseUrl}/api/locations`);
       const devRes = await fetch(`${apiBaseUrl}/api/devices`);
+      const relRes = await fetch(`${apiBaseUrl}/api/releases`);
       
       if (locRes.ok && devRes.ok) {
         const locData = await locRes.json();
@@ -107,6 +138,11 @@ export default function App() {
         setLocations(locData);
         setDevices(devData);
         setIsBackendConnected(true);
+
+        if (relRes.ok) {
+          const relData = await relRes.json();
+          setReleases(relData);
+        }
 
         // Auto-select first location if none selected or the selected one is invalid (using functional updater to avoid stale closures)
         setSelectedLocationId(current => {
@@ -116,10 +152,9 @@ export default function App() {
           }
           return current;
         });
-      } else {
-        setIsBackendConnected(false);
       }
     } catch (e) {
+      console.error('Failed to fetch backend metadata, falling back to mock mode:', e);
       setIsBackendConnected(false);
       setupMockFallbacks();
     }
@@ -162,6 +197,19 @@ export default function App() {
       console.error('Failed to fetch real-time compliance:', e);
     }
 
+    // Fetch Rollout Status if a target is selected
+    if (rolloutTargetVersion) {
+      try {
+        const rolloutRes = await fetch(`${apiBaseUrl}/api/releases/rollout/status?version=${rolloutTargetVersion}`);
+        if (rolloutRes.ok) {
+          const rolloutData = await rolloutRes.json();
+          setRolloutStatus(rolloutData);
+        }
+      } catch (e) {
+        console.error('Failed to fetch rollout status:', e);
+      }
+    }
+
     // Fetch ingestion logs (only if diagnostics mode is enabled by user)
     if (showDiagnostics) {
       try {
@@ -180,6 +228,128 @@ export default function App() {
     }
   };
 
+  // Handle adding a new firmware release
+  const handleAddRelease = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newReleaseVersion || !newReleaseUrl) return;
+
+    if (isBackendConnected) {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/releases`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            version: newReleaseVersion,
+            url: newReleaseUrl,
+            description: newReleaseDesc
+          })
+        });
+        if (res.ok) {
+          setNewReleaseVersion('');
+          setNewReleaseUrl('');
+          setNewReleaseDesc('');
+          fetchMetadata();
+          setLogs(prev => [`[SYSTEM] Created new firmware release v${newReleaseVersion}`, ...prev]);
+        } else {
+          const errData = await res.json();
+          alert(errData.error || 'Failed to create release');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Network error: failed to create firmware release');
+      }
+    } else {
+      // Mock add release
+      setReleases(prev => [
+        { version: newReleaseVersion, url: newReleaseUrl, description: newReleaseDesc },
+        ...prev
+      ]);
+      setNewReleaseVersion('');
+      setNewReleaseUrl('');
+      setNewReleaseDesc('');
+      setLogs(prev => [`[SYSTEM] Created mock firmware release v${newReleaseVersion}`, ...prev]);
+    }
+  };
+
+  // Handle deleting a firmware release
+  const handleDeleteRelease = async (version: string) => {
+    if (confirm(`Are you sure you want to delete release version v${version}?`)) {
+      if (isBackendConnected) {
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/releases/${version}`, {
+            method: 'DELETE'
+          });
+          if (res.ok) {
+            fetchMetadata();
+            setLogs(prev => [`[SYSTEM] Deleted firmware release v${version}`, ...prev]);
+            if (rolloutTargetVersion === version) {
+              setRolloutTargetVersion('');
+              setRolloutStatus(null);
+            }
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      } else {
+        // Mock delete
+        setReleases(prev => prev.filter(r => r.version !== version));
+        setLogs(prev => [`[SYSTEM] Deleted mock firmware release v${version}`, ...prev]);
+        if (rolloutTargetVersion === version) {
+          setRolloutTargetVersion('');
+          setRolloutStatus(null);
+        }
+      }
+    }
+  };
+
+  // Trigger rollout of a version
+  const handleTriggerRollout = async (version: string) => {
+    if (confirm(`Are you sure you want to trigger a firmware rollout of version v${version} to all eligible devices?`)) {
+      setRolloutTargetVersion(version);
+      if (isBackendConnected) {
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/releases/rollout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setLogs(prev => [`[SYSTEM] Rollout triggered: ${data.message}`, ...prev]);
+            // Initial poll
+            const statusRes = await fetch(`${apiBaseUrl}/api/releases/rollout/status?version=${version}`);
+            if (statusRes.ok) {
+              const statusData = await statusRes.json();
+              setRolloutStatus(statusData);
+            }
+          } else {
+            const errData = await res.json();
+            alert(errData.error || 'Failed to trigger rollout');
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Network error: failed to trigger rollout');
+        }
+      } else {
+        // Mock trigger rollout: initialize status
+        const total = devices.filter(d => d.status === 'ACTIVE').length;
+        setRolloutStatus({
+          version,
+          totalCount: total,
+          updatedCount: 0,
+          percentage: 0,
+          devices: devices.filter(d => d.status === 'ACTIVE').map(d => ({
+            deviceId: d.id,
+            friendlyName: d.friendly_name,
+            currentVersion: '1.0.0',
+            isUpdated: false
+          }))
+        });
+        setLogs(prev => [`[SYSTEM] Rollout triggered locally for mock release v${version}`, ...prev]);
+      }
+    }
+  };
+
   // Populate mock data if backend offline (so the app works standalone)
   const setupMockFallbacks = () => {
     const mockLocs = [
@@ -192,6 +362,29 @@ export default function App() {
     ];
     setLocations(mockLocs);
     setDevices(mockDevs);
+
+    // Seed mock releases
+    const mockReleases = [
+      { version: '1.0.0', url: 'http://nas48.vbl.hu/lunagrid/releases/firmware_v1.0.0.bin', description: 'Initial stable rollout version.' },
+      { version: '1.1.0', url: 'http://nas48.vbl.hu/lunagrid/releases/firmware_v1.1.0.bin', description: 'Reduced telemetry interval to 5 mins and optimized memory heap usage.' }
+    ];
+    setReleases(mockReleases);
+
+    // Setup 24h mock history
+    const mockHistory: HistoryItem[] = [];
+    const baseTime = new Date();
+    // Simulate some periodic states matching B-Tariff hours (typically 22:00 to 06:00, and 13:00 to 17:00)
+    for (let i = 24; i >= 0; i--) {
+      const d = new Date(baseTime.getTime() - i * 60 * 60 * 1000);
+      const hour = d.getHours();
+      // True if off-peak B-tariff (simplified rule)
+      const active = (hour >= 22 || hour < 6 || (hour >= 13 && hour < 17));
+      mockHistory.push({
+        time: d.toISOString(),
+        active: active
+      });
+    }
+    setHistory(mockHistory);
 
     // Generate mock compliance data for the last 7 calendar days
     const mockCompliance = [];
@@ -213,21 +406,6 @@ export default function App() {
     }
     setCompliance(mockCompliance);
 
-    // Generate mock history data for the last 24 hours to populate the Today's Availability Strip in offline/mock mode
-    const mockHistory: HistoryItem[] = [];
-    for (let i = 24; i >= 0; i--) {
-      const targetTime = now - i * 60 * 60 * 1000;
-      const d = new Date(targetTime);
-      // Simulate typical B-tariff active hours (night slots: 22-06, day slots: 12-16)
-      const hour = d.getHours();
-      const active = (hour >= 22 || hour < 6) || (hour >= 12 && hour < 16);
-      mockHistory.push({
-        time: d.toISOString(),
-        active: active
-      });
-    }
-    setHistory(mockHistory);
-
     // Auto-select first location if none selected or the selected one is invalid (using functional updater to avoid stale closures)
     setSelectedLocationId(current => {
       const exists = mockLocs.some(loc => loc.id === current);
@@ -245,6 +423,37 @@ export default function App() {
     // Simulate real-time logs/telemetry locally
     const timer = setInterval(() => {
       if (document.hidden) return; // Pause simulator updates when tab is inactive
+
+      // Simulate mock rollout updates
+      if (rolloutTargetVersion && rolloutStatus) {
+        setRolloutStatus(prev => {
+          if (!prev) return null;
+          if (prev.updatedCount >= prev.totalCount) return prev;
+          
+          const newDevices = prev.devices.map(d => {
+            if (!d.isUpdated && Math.random() < 0.25) {
+              return { ...d, currentVersion: prev.version, isUpdated: true };
+            }
+            return d;
+          });
+          const updated = newDevices.filter(d => d.isUpdated).length;
+          const pct = Math.round((updated / prev.totalCount) * 100);
+          
+          const newlyUpdated = newDevices.find((d, idx) => d.isUpdated && !prev.devices[idx].isUpdated);
+          if (newlyUpdated) {
+            const nowStr = new Date().toLocaleTimeString();
+            setLogs(prevLogs => [`[${nowStr}] [MOCK OTA] Device ${newlyUpdated.deviceId} successfully flashed and rebooted to v${prev.version}`, ...prevLogs.slice(0, 5)]);
+          }
+
+          return {
+            ...prev,
+            devices: newDevices,
+            updatedCount: updated,
+            percentage: pct
+          };
+        });
+      }
+
       setTelemetry(prev => {
         const toggleState = Math.random() < 0.1;
         const newGridState = toggleState ? !prev.gridActive : prev.gridActive;
@@ -252,6 +461,15 @@ export default function App() {
           const now = new Date().toLocaleTimeString();
           setLogs(prevLogs => [`[${now}] Mock Grid toggled to ${newGridState ? 'OFF-PEAK' : 'ON-PEAK'}`, ...prevLogs.slice(0, 5)]);
         }
+        
+        let currentVer = prev.firmwareVersion || '1.0.0';
+        if (rolloutTargetVersion && rolloutStatus) {
+          const matchedDevice = rolloutStatus.devices.find(d => d.deviceId === 'lunagrid_c3_mock_1');
+          if (matchedDevice) {
+            currentVer = matchedDevice.currentVersion;
+          }
+        }
+
         return {
           gridActive: newGridState,
           uptime: prev.uptime + 2,
@@ -259,13 +477,14 @@ export default function App() {
           wifiRssi: -65 + Math.floor(Math.random() * 10 - 5),
           timestamp: Date.now(),
           deviceId: 'lunagrid_c3_mock_1',
-          friendlyName: 'Mock Contactor'
+          friendlyName: 'Mock Contactor',
+          firmwareVersion: currentVer
         };
       });
     }, 2000);
 
     return () => clearInterval(timer);
-  }, [isBackendConnected, selectedLocationId, showDiagnostics]);
+  }, [isBackendConnected, selectedLocationId, showDiagnostics, rolloutTargetVersion, rolloutStatus]);
 
   // Handle periodic metadata fetching
   useEffect(() => {
@@ -804,7 +1023,7 @@ export default function App() {
                   </svg>
                 </div>
                 <h2>{telemetry.gridActive ? 'OFF-PEAK (B-Tariff Active)' : 'ON-PEAK (B-Tariff Inactive)'}</h2>
-                <p>Device: {telemetry.friendlyName || telemetry.deviceId || 'None'}</p>
+                <p>Device: {telemetry.friendlyName || telemetry.deviceId || 'None'} {telemetry.deviceId && `(Firmware v${telemetry.firmwareVersion || '1.0.0'})`}</p>
               </>
             )}
           </div>
@@ -1208,6 +1427,146 @@ export default function App() {
                 </table>
               </div>
             )}
+          </div>
+
+          {/* Firmware Release Manager Panel */}
+          <div className="card col-12" style={{ marginTop: '1.5rem' }}>
+            <h3>Firmware Release Manager</h3>
+            <p className="info-txt">Manage firmware binaries, verify versions, and roll out OTA updates across all connected ESP32 devices.</p>
+
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1.5rem' }}>
+              
+              {/* Form: Register New Release */}
+              <div style={{ flex: '1 1 350px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '0.75rem', padding: '1.25rem' }}>
+                <h4 style={{ marginBottom: '1rem', color: '#10b981' }}>Register New Release</h4>
+                <form onSubmit={handleAddRelease}>
+                  <div className="form-group">
+                    <label>Version Number (e.g. 1.1.0)</label>
+                    <input className="form-input" type="text" required placeholder="1.1.0" value={newReleaseVersion} onChange={e => setNewReleaseVersion(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Firmware Binary URL (.bin)</label>
+                    <input className="form-input" type="url" required placeholder="http://nas48.vbl.hu/lunagrid/releases/firmware.bin" value={newReleaseUrl} onChange={e => setNewReleaseUrl(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Release Notes / Description</label>
+                    <textarea 
+                      className="form-input" 
+                      style={{ height: '70px', resize: 'vertical' }}
+                      placeholder="Changes in this version..." 
+                      value={newReleaseDesc} 
+                      onChange={e => setNewReleaseDesc(e.target.value)} 
+                    />
+                  </div>
+                  <button className="btn-action" type="submit" style={{ width: '100%', marginTop: '0.5rem' }}>Register Version</button>
+                </form>
+              </div>
+
+              {/* List: Releases Registry */}
+              <div style={{ flex: '2 1 500px' }}>
+                <h4 style={{ marginBottom: '1rem' }}>Registered Releases</h4>
+                {releases.length === 0 ? (
+                  <div style={{ padding: '2rem', color: '#64748b', textAlign: 'center', border: '1px dashed rgba(255,255,255,0.05)', borderRadius: '0.75rem' }}>
+                    No firmware releases registered.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {releases.map(rel => (
+                      <div key={rel.version} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '0.75rem', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <strong style={{ fontSize: '1.1rem', color: '#f8fafc' }}>v{rel.version}</strong>
+                            {rolloutTargetVersion === rel.version && (
+                              <span style={{ fontSize: '0.7rem', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.25)', padding: '0.05rem 0.4rem', borderRadius: '0.25rem' }}>ROLLING OUT</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'monospace', marginTop: '0.25rem', wordBreak: 'break-all' }}>{rel.url}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '0.35rem' }}>{rel.description}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.35rem' }}>
+                          <button 
+                            className="btn-action" 
+                            style={{ 
+                              padding: '0.3rem 0.75rem', 
+                              fontSize: '0.8rem',
+                              background: rolloutTargetVersion === rel.version ? 'rgba(59, 130, 246, 0.15)' : 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                              borderColor: rolloutTargetVersion === rel.version ? 'rgba(59, 130, 246, 0.25)' : 'transparent',
+                              color: rolloutTargetVersion === rel.version ? '#3b82f6' : '#ffffff'
+                            }} 
+                            onClick={() => handleTriggerRollout(rel.version)}
+                          >
+                            {rolloutTargetVersion === rel.version ? 'Re-Rollout' : 'Rollout'}
+                          </button>
+                          <button 
+                            className="btn-secondary" 
+                            style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem', color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)' }} 
+                            onClick={() => handleDeleteRelease(rel.version)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Panel: Active Rollout Status Dashboard */}
+            {rolloutStatus && (
+              <div style={{ marginTop: '2rem', padding: '1.25rem', background: 'rgba(59,130,246,0.02)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <h4 style={{ color: '#60a5fa' }}>Active Rollout Status: v{rolloutStatus.version}</h4>
+                  <span style={{ fontWeight: 'bold', color: '#60a5fa' }}>{rolloutStatus.percentage}% Complete</span>
+                </div>
+                
+                {/* Progress bar */}
+                <div style={{ height: '0.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.25rem', overflow: 'hidden', marginBottom: '1rem' }}>
+                  <div style={{ width: `${rolloutStatus.percentage}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #60a5fa)', transition: 'width 0.5s ease-in-out' }} />
+                </div>
+
+                <p className="info-txt" style={{ marginBottom: '1rem' }}>
+                  Devices updated: <strong>{rolloutStatus.updatedCount}</strong> of <strong>{rolloutStatus.totalCount}</strong> active devices.
+                </p>
+
+                {/* Device Rollout List Table */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#94a3b8' }}>
+                        <th style={{ padding: '0.5rem' }}>Device UID</th>
+                        <th style={{ padding: '0.5rem' }}>Friendly Name</th>
+                        <th style={{ padding: '0.5rem' }}>Version</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'right' }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rolloutStatus.devices.map(d => (
+                        <tr key={d.deviceId} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                          <td style={{ padding: '0.5rem', fontFamily: 'monospace' }}>{d.deviceId}</td>
+                          <td style={{ padding: '0.5rem' }}>{d.friendlyName || 'Unconfigured'}</td>
+                          <td style={{ padding: '0.5rem', color: d.isUpdated ? '#10b981' : '#f59e0b' }}>v{d.currentVersion}</td>
+                          <td style={{ padding: '0.5rem', textAlign: 'right' }}>
+                            <span style={{ 
+                              color: d.isUpdated ? '#10b981' : '#f59e0b', 
+                              background: d.isUpdated ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                              border: d.isUpdated ? '1px solid rgba(16,185,129,0.15)' : '1px solid rgba(245,158,11,0.15)',
+                              padding: '0.1rem 0.4rem', 
+                              borderRadius: '0.25rem',
+                              fontSize: '0.75rem' 
+                            }}>
+                              {d.isUpdated ? 'Up to Date' : 'Pending Update'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       )}

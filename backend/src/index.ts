@@ -16,7 +16,10 @@ import {
   autoRegisterDevice, 
   enrollDevice,
   bindDeviceToLocation,
-  unregisterDevice
+  unregisterDevice,
+  getAllReleases,
+  createRelease,
+  deleteRelease
 } from './db.js'; // Note the .js extension for ES Module compatibility
 
 dotenv.config();
@@ -48,9 +51,13 @@ interface CachedTelemetry {
   freeHeap: number;
   wifiRssi: number;
   timestamp: number;
+  firmwareVersion: string;
 }
 
 const telemetryCache: Record<string, CachedTelemetry> = {};
+
+// Global MQTT client reference for endpoint triggers
+let mqttClient: mqtt.MqttClient;
 
 // --- In-Memory Rolling Ingestion Logs Buffer ---
 interface LogEntry {
@@ -162,19 +169,21 @@ app.get('/api/locations/:id/telemetry', async (req, res) => {
   try {
     const device = await getDeviceByLocationId(locationId);
     if (!device) {
-      return res.json({ gridActive: false, uptime: 0, freeHeap: 0, wifiRssi: 0, timestamp: 0, deviceId: null });
+      return res.json({ gridActive: false, uptime: 0, freeHeap: 0, wifiRssi: 0, timestamp: 0, deviceId: null, firmwareVersion: null });
     }
     const cached = telemetryCache[device.id] || {
       gridActive: false,
       uptime: 0,
       freeHeap: 0,
       wifiRssi: 0,
-      timestamp: 0
+      timestamp: 0,
+      firmwareVersion: '1.0.0'
     };
     res.json({
       ...cached,
       deviceId: device.id,
-      friendlyName: device.friendly_name
+      friendlyName: device.friendly_name,
+      firmwareVersion: cached.firmwareVersion || '1.0.0'
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to retrieve telemetry' });
@@ -335,6 +344,138 @@ app.delete('/api/devices/:id', async (req, res) => {
   }
 });
 
+// --- Firmware Releases API ---
+
+// Get all releases
+app.get('/api/releases', async (req, res) => {
+  try {
+    const releases = await getAllReleases();
+    res.json(releases);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to retrieve firmware releases' });
+  }
+});
+
+// Create new release
+app.post('/api/releases', async (req, res) => {
+  const { version, url, description } = req.body;
+  if (!version || !url) {
+    return res.status(400).json({ error: 'version and url are required' });
+  }
+  try {
+    await createRelease(version, url, description || '');
+    res.status(201).json({ status: 'created', release: { version, url, description } });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create firmware release. Version may already exist.' });
+  }
+});
+
+// Delete a release
+app.delete('/api/releases/:version', async (req, res) => {
+  const version = req.params.version;
+  try {
+    await deleteRelease(version);
+    res.json({ status: 'success', message: `Release ${version} deleted successfully` });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete firmware release' });
+  }
+});
+
+// Trigger rollout of a release to all outdated/eligible devices
+app.post('/api/releases/rollout', async (req, res) => {
+  const { version } = req.body;
+  if (!version) {
+    return res.status(400).json({ error: 'version is required' });
+  }
+  try {
+    // Find the release details in SQLite
+    const releases = await getAllReleases();
+    const release = releases.find(r => r.version === version);
+    if (!release) {
+      return res.status(404).json({ error: `Release version ${version} not found` });
+    }
+
+    // Get all enrolled active devices
+    const allDevices = await getAllDevices();
+    const activeDevices = allDevices.filter(d => d.status === 'ACTIVE');
+
+    let triggeredCount = 0;
+
+    for (const device of activeDevices) {
+      const cached = telemetryCache[device.id];
+      const currentVersion = cached ? cached.firmwareVersion : '1.0.0';
+
+      // Only push OTA update if the device version is different from the target version
+      if (currentVersion !== version) {
+        const cmdTopic = `lunagrid/devices/${device.id}/cmd`;
+        const payload = JSON.stringify({
+          cmd: 'OTA_UPDATE',
+          url: release.url,
+          version: release.version
+        });
+
+        // Publish to MQTT broker if connected
+        if (mqttClient) {
+          mqttClient.publish(cmdTopic, payload, { qos: 1 });
+          const logLine = `Triggered OTA update for device ${device.id} (from ${currentVersion} to ${version})`;
+          console.log(`[ROLLOUT] ${logLine}`);
+          addLog(`[ROLLOUT] ${logLine}`);
+          triggeredCount++;
+        }
+      }
+    }
+
+    res.json({ 
+      status: 'success', 
+      message: `Rollout initiated for v${version}. Commands dispatched to ${triggeredCount} devices.` 
+    });
+  } catch (error) {
+    console.error('[ROLLOUT] Error initiating rollout:', error);
+    res.status(500).json({ error: 'Failed to initiate firmware rollout' });
+  }
+});
+
+// Get rollout status / metrics
+app.get('/api/releases/rollout/status', async (req, res) => {
+  const targetVersion = req.query.version as string;
+  if (!targetVersion) {
+    return res.status(400).json({ error: 'version query parameter is required' });
+  }
+  try {
+    const allDevices = await getAllDevices();
+    const activeDevices = allDevices.filter(d => d.status === 'ACTIVE');
+
+    const total = activeDevices.length;
+    let updated = 0;
+    const devicesStatus = [];
+
+    for (const device of activeDevices) {
+      const cached = telemetryCache[device.id];
+      const currentVersion = cached ? cached.firmwareVersion : '1.0.0';
+      const isUpdated = currentVersion === targetVersion;
+      if (isUpdated) {
+        updated++;
+      }
+      devicesStatus.push({
+        deviceId: device.id,
+        friendlyName: device.friendly_name,
+        currentVersion,
+        isUpdated
+      });
+    }
+
+    res.json({
+      version: targetVersion,
+      totalCount: total,
+      updatedCount: updated,
+      percentage: total > 0 ? Math.round((updated / total) * 100) : 0,
+      devices: devicesStatus
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to retrieve rollout status' });
+  }
+});
+
 // --- Boot Server and Ingest ---
 const startServer = async () => {
   try {
@@ -350,7 +491,7 @@ const startServer = async () => {
   });
 
   console.log(`[MQTT] Connecting to broker at ${mqttBrokerUrl}`);
-  const mqttClient = mqtt.connect(mqttBrokerUrl);
+  mqttClient = mqtt.connect(mqttBrokerUrl);
 
   mqttClient.on('connect', () => {
     console.log('[MQTT] Connected successfully to broker');
@@ -384,7 +525,8 @@ const startServer = async () => {
           uptime: 0,
           freeHeap: 0,
           wifiRssi: 0,
-          timestamp: 0
+          timestamp: 0,
+          firmwareVersion: '1.0.0'
         };
       }
 
@@ -396,6 +538,7 @@ const startServer = async () => {
         telemetryCache[deviceId].uptime = payload.metrics.uptime_seconds;
         telemetryCache[deviceId].freeHeap = payload.metrics.free_heap_bytes;
         telemetryCache[deviceId].wifiRssi = payload.status.wifi_rssi;
+        telemetryCache[deviceId].firmwareVersion = payload.status.firmware_version || '1.0.0';
         telemetryCache[deviceId].timestamp = Date.now();
       }
 

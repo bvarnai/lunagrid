@@ -71,6 +71,15 @@ export const initDb = async (): Promise<void> => {
     )
   `);
 
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS firmware_releases (
+      version TEXT PRIMARY KEY,
+      url TEXT NOT NULL,
+      description TEXT,
+      released_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Seed default locations if empty
   const locationCount = await getQuery<{ count: number }>('SELECT COUNT(*) as count FROM locations');
   if (locationCount && locationCount.count === 0) {
@@ -172,4 +181,27 @@ export const bindDeviceToLocation = async (deviceId: string | null, locationId: 
 
 export const unregisterDevice = async (id: string): Promise<void> => {
   await runQuery('DELETE FROM devices WHERE id = ?', [id]);
+};
+
+// Firmware Releases
+export interface FirmwareRelease {
+  version: string;
+  url: string;
+  description: string;
+  released_at?: string;
+}
+
+export const getAllReleases = (): Promise<FirmwareRelease[]> => {
+  return allQuery<FirmwareRelease>('SELECT * FROM firmware_releases ORDER BY released_at DESC');
+};
+
+export const createRelease = async (version: string, url: string, description: string): Promise<void> => {
+  await runQuery(
+    'INSERT INTO firmware_releases (version, url, description) VALUES (?, ?, ?)',
+    [version, url, description]
+  );
+};
+
+export const deleteRelease = async (version: string): Promise<void> => {
+  await runQuery('DELETE FROM firmware_releases WHERE version = ?', [version]);
 };

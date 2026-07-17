@@ -2,6 +2,8 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <time.h>
+#include <HTTPUpdate.h>
+#include <ArduinoJson.h>
 
 // --- Configuration ---
 // Modify these to match your local WiFi network and host machine IP
@@ -9,6 +11,8 @@ const char* ssid = "VBL";
 const char* password = "Mentor19";
 const char* mqtt_server = "mqtt.nas48.vbl.hu"; // Replace with your NAS local IP or DNS
 const int mqtt_port = 1883;
+
+const char* FIRMWARE_VERSION = "1.0.0";
 
 // GPIO Pins
 #define SEN_GRID_B_CONTACTOR 3
@@ -22,6 +26,7 @@ PubSubClient mqttClient(wifiClient);
 char deviceId[32];
 char stateTopic[64];
 char telemetryTopic[64];
+char cmdTopic[64];
 
 // State tracking
 bool lastGridActive = false;
@@ -49,6 +54,82 @@ void getUniqueDeviceId() {
   // Format topics matching backend schema: lunagrid/devices/{deviceId}/{type}
   snprintf(stateTopic, sizeof(stateTopic), "lunagrid/devices/%s/state", deviceId);
   snprintf(telemetryTopic, sizeof(telemetryTopic), "lunagrid/devices/%s/telemetry", deviceId);
+  snprintf(cmdTopic, sizeof(cmdTopic), "lunagrid/devices/%s/cmd", deviceId);
+}
+
+// Flash Updater Routine
+void triggerOtaUpdate(String url) {
+  Serial.print("[OTA] Initiating firmware update from: ");
+  Serial.println(url);
+
+  // Turn status LED on solid during update
+  digitalWrite(LED_STATUS_BOARD, HIGH);
+
+  // Trigger OTA Update over HTTP/HTTPS (using global wifiClient)
+  t_httpUpdate_return ret = httpUpdate.update(wifiClient, url);
+
+  // If update fails, turn LED off and log error
+  digitalWrite(LED_STATUS_BOARD, LOW);
+
+  switch (ret) {
+    case HTTP_UPDATE_FAILED:
+      Serial.printf("[OTA ERROR] HTTP_UPDATE_FAILED Error (%d): %s\n", 
+                    httpUpdate.getLastError(), 
+                    httpUpdate.getLastErrorString().c_str());
+      break;
+    case HTTP_UPDATE_NO_UPDATES:
+      Serial.println("[OTA] HTTP_UPDATE_NO_UPDATES");
+      break;
+    case HTTP_UPDATE_OK:
+      Serial.println("[OTA] HTTP_UPDATE_OK (rebooting...)");
+      break;
+  }
+}
+
+// Callback for incoming MQTT command messages
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("[MQTT] Message arrived on topic [");
+  Serial.print(topic);
+  Serial.println("]");
+
+  // Verify the topic matches our command topic
+  if (strcmp(topic, cmdTopic) != 0) {
+    return;
+  }
+
+  // Parse command payload using ArduinoJson 7
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, payload, length);
+
+  if (error) {
+    Serial.print("[MQTT ERROR] JSON Deserialization failed: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  const char* cmd = doc["cmd"];
+  if (cmd && strcmp(cmd, "OTA_UPDATE") == 0) {
+    const char* url = doc["url"];
+    const char* version = doc["version"];
+
+    if (!url || !version) {
+      Serial.println("[MQTT ERROR] OTA command payload is missing 'url' or 'version'");
+      return;
+    }
+
+    Serial.print("[OTA] Target Version: ");
+    Serial.print(version);
+    Serial.print(" | Current Version: ");
+    Serial.println(FIRMWARE_VERSION);
+
+    // Reject update if version is not newer than current
+    if (String(version) <= String(FIRMWARE_VERSION)) {
+      Serial.println("[OTA] Update rejected: Target version is not newer than current firmware version.");
+      return;
+    }
+
+    triggerOtaUpdate(String(url));
+  }
 }
 
 // Connect to WiFi
@@ -108,15 +189,15 @@ void publishGridState(bool active) {
 
 // Publish Telemetry health metrics to MQTT broker
 void publishTelemetry(bool active) {
-  char payload[256];
+  char payload[384];
   long rssi = WiFi.RSSI();
   unsigned long uptime = millis() / 1000;
   uint32_t freeHeap = ESP.getFreeHeap();
   time_t now = time(nullptr);
   
   snprintf(payload, sizeof(payload), 
-           "{\"timestamp\":%lld,\"device_id\":\"%s\",\"metrics\":{\"grid_active\":%s,\"uptime_seconds\":%lu,\"free_heap_bytes\":%u},\"status\":{\"wifi_rssi\":%ld,\"error_code\":0}}", 
-           (long long)now, deviceId, active ? "true" : "false", uptime, freeHeap, rssi);
+           "{\"timestamp\":%lld,\"device_id\":\"%s\",\"metrics\":{\"grid_active\":%s,\"uptime_seconds\":%lu,\"free_heap_bytes\":%u},\"status\":{\"wifi_rssi\":%ld,\"error_code\":0,\"firmware_version\":\"%s\"}}", 
+           (long long)now, deviceId, active ? "true" : "false", uptime, freeHeap, rssi, FIRMWARE_VERSION);
   
   Serial.print("[MQTT] Publishing telemetry to: ");
   Serial.println(telemetryTopic);
@@ -142,6 +223,11 @@ void reconnectMqtt() {
     // Attempt to connect
     if (mqttClient.connect(deviceId)) {
       Serial.println("[MQTT] Connected successfully!");
+      
+      // Subscribe to remote command topic
+      mqttClient.subscribe(cmdTopic);
+      Serial.print("[MQTT] Subscribed to topic: ");
+      Serial.println(cmdTopic);
       
       // Publish initial state upon connection
       publishGridState(debouncedGridActive);
@@ -182,6 +268,7 @@ void setup() {
   // Connect
   setupWifi();
   mqttClient.setServer(mqtt_server, mqtt_port);
+  mqttClient.setCallback(mqttCallback);
   
   // Read initial contactor state (LOW = active B-tariff due to pull-up shorted to GND)
   debouncedGridActive = (digitalRead(SEN_GRID_B_CONTACTOR) == LOW);
