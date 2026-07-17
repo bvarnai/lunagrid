@@ -72,7 +72,15 @@ async def main():
         myskoda = MySkoda(session)
         
         # Connect to MySkoda API
-        await myskoda.connect(args.email, args.password)
+        try:
+            await myskoda.connect(args.email, args.password)
+        except Exception as e:
+            print(f"\nAUTHENTICATION ERROR: Failed to log in to MySkoda API ({type(e).__name__}).")
+            print("This typically happens when:")
+            print("  1. The email or password provided is incorrect.")
+            print("  2. There are new Terms of Service or marketing consents you must accept first in your official MySkoda mobile app.")
+            print("  3. Skoda's identity authorization servers are undergoing maintenance or are temporarily down.")
+            sys.exit(1)
         
         # Retrieve registered VINs
         vins = await myskoda.list_vehicle_vins()
