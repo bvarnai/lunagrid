@@ -24,6 +24,8 @@ This project is structured as a monorepo containing all software layers, physica
 Explore our design and guide files:
 - **[Project Plan & Specification](file:///c:/Users/bvarnai/workspace/lunagrid/docs/lunagrid_project_plan.md):** Complete specifications including the hardware contactor wiring and cloud architecture.
 - **[Firmware Development Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_development.md):** Environment setups, WSL2 port authorization, and PlatformIO flashing commands.
+- **[Firmware Release & Rollout Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_release_guide.md):** Step-by-step firmware build, Nginx hosting, portal registration, and remote update commands.
+- **[EV Wake-up Integration Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/ev_wakeup_integration.md):** Configuration steps for local scripts or Home Assistant webhooks to wake sleeping EVs.
 - **[ESPHome USB Serial Quickstart](file:///c:/Users/bvarnai/workspace/lunagrid/docs/usb_serial_quickstart.md):** Standalone reference file for basic USB binding and ESPHome setup.
 
 ---
