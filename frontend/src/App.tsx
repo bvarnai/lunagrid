@@ -50,7 +50,9 @@ export default function App() {
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [selectedLocationId, setSelectedLocationId] = useState<string>('');
+  const [selectedLocationId, setSelectedLocationId] = useState<string>(() => {
+    return localStorage.getItem('lunagrid_selected_location_id') || '';
+  });
   
   // Real-time Telemetry and History States
   const [telemetry, setTelemetry] = useState<Telemetry>({
@@ -66,6 +68,15 @@ export default function App() {
   const [compliance, setCompliance] = useState<ComplianceItem[]>([]);
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
   const [logs, setLogs] = useState<string[]>([]);
+
+  // Persist selected location ID in LocalStorage when changed
+  useEffect(() => {
+    if (selectedLocationId) {
+      localStorage.setItem('lunagrid_selected_location_id', selectedLocationId);
+    } else {
+      localStorage.removeItem('lunagrid_selected_location_id');
+    }
+  }, [selectedLocationId]);
 
   // Form states for creating location
   const [newLocId, setNewLocId] = useState('');
@@ -97,9 +108,10 @@ export default function App() {
         setDevices(devData);
         setIsBackendConnected(true);
 
-        // Auto-select first location if none selected (using functional updater to avoid stale closures)
+        // Auto-select first location if none selected or the selected one is invalid (using functional updater to avoid stale closures)
         setSelectedLocationId(current => {
-          if (!current && locData.length > 0) {
+          const exists = locData.some((loc: Location) => loc.id === current);
+          if ((!current || !exists) && locData.length > 0) {
             return locData[0].id;
           }
           return current;
@@ -201,9 +213,25 @@ export default function App() {
     }
     setCompliance(mockCompliance);
 
-    // Auto-select first location if none selected (using functional updater to avoid stale closures)
+    // Generate mock history data for the last 24 hours to populate the Today's Availability Strip in offline/mock mode
+    const mockHistory: HistoryItem[] = [];
+    for (let i = 24; i >= 0; i--) {
+      const targetTime = now - i * 60 * 60 * 1000;
+      const d = new Date(targetTime);
+      // Simulate typical B-tariff active hours (night slots: 22-06, day slots: 12-16)
+      const hour = d.getHours();
+      const active = (hour >= 22 || hour < 6) || (hour >= 12 && hour < 16);
+      mockHistory.push({
+        time: d.toISOString(),
+        active: active
+      });
+    }
+    setHistory(mockHistory);
+
+    // Auto-select first location if none selected or the selected one is invalid (using functional updater to avoid stale closures)
     setSelectedLocationId(current => {
-      if (!current && mockLocs.length > 0) {
+      const exists = mockLocs.some(loc => loc.id === current);
+      if ((!current || !exists) && mockLocs.length > 0) {
         return mockLocs[0].id;
       }
       return current;

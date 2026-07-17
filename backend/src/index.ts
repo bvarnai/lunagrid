@@ -202,11 +202,12 @@ app.get('/api/locations/:id/history', async (req, res) => {
     for (const line of lines) {
       const parts = line.split(',');
       // Parse CSV result rows from InfluxDB query engine
-      if (parts.length >= 6 && parts[0] === '' && (parts[1] === '_result' || parts[1] === 'result')) {
+      // Since the Flux query keeps only _time and _value, columns are: ,result,table,_time,_value (length of 5)
+      if (parts.length >= 5 && parts[0] === '' && (parts[1] === '_result' || parts[1] === 'result')) {
         if (parts[3] === '_time') continue; // Skip header row
         
         const time = parts[3];
-        const active = parts[4] === 'true';
+        const active = parts[4].trim() === 'true';
         history.push({ time, active });
       }
     }
@@ -260,7 +261,8 @@ app.get('/api/locations/:id/compliance', async (req, res) => {
 
     for (const line of lines) {
       const parts = line.split(',');
-      if (parts.length >= 6 && parts[0] === '' && (parts[1] === '_result' || parts[1] === 'result')) {
+      // Since the Flux query keeps only _time and _value, columns are: ,result,table,_time,_value (length of 5)
+      if (parts.length >= 5 && parts[0] === '' && (parts[1] === '_result' || parts[1] === 'result')) {
         if (parts[3] === '_time') continue; // Skip header row
         
         const time = parts[3];

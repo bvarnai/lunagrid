@@ -31,7 +31,7 @@ const unsigned long debounceDelay = 100; // 100ms debounce from plan
 
 // Telemetry timer
 unsigned long lastTelemetryTime = 0;
-const unsigned long telemetryInterval = 10000; // Send telemetry health every 10s
+const unsigned long telemetryInterval = 300000; // Send telemetry health every 5 minutes (300s)
 
 // LED status flashing
 unsigned long lastLedFlashTime = 0;
