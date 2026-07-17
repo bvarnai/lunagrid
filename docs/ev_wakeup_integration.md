@@ -81,6 +81,18 @@ If you prefer a standalone script that connects directly to the Skoda Connect AP
 
 ---
 
+### Recipe C: EVCC (Electric Vehicle Charge Controller) Webhook
+If you use EVCC to manage solar charging or smart grid scheduling, you can trigger its remote vehicle wake API directly.
+
+1. **How EVCC handles wakeups**:
+   EVCC integrates with the MySkoda API on your behalf. When a charger loadpoint is connected but the vehicle is in a deep sleep, EVCC exposes an API endpoint to wake the vehicle up.
+2. **In the Lunagrid portal**:
+   * Set Type to **Webhook (HTTP POST)**.
+   * Set Target URL to: `http://<your-evcc-ip>:7070/api/charge/<loadpoint_id>/wake` (replace `<loadpoint_id>` with your active loadpoint ID, typically `1`).
+   * This sends an HTTP POST trigger when B-tariff goes ON, prompting EVCC to wake the Skoda Enyaq and begin charging immediately.
+
+---
+
 ## 4. Troubleshooting & CSRF Errors
 
 If your manual test or automation fails with `myskoda.auth.authorization.CSRFError`:
