@@ -34,3 +34,9 @@ dist/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Python / Virtual Environments
+.venv/
+venv/
+**/venv/
+**/.venv/
