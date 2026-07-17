@@ -824,9 +824,11 @@ export default function App() {
                       matchedItem = compliance.find(item => {
                         const itemDate = new Date(item.date);
                         if (isNaN(itemDate.getTime())) return false;
-                        return d.getFullYear() === itemDate.getFullYear() &&
-                               d.getMonth() === itemDate.getMonth() &&
-                               d.getDate() === itemDate.getDate();
+                        
+                        // Compare local calendar day (d) with InfluxDB UTC daily date (itemDate)
+                        const localYMD = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+                        const utcYMD = `${itemDate.getUTCFullYear()}-${(itemDate.getUTCMonth() + 1).toString().padStart(2, '0')}-${itemDate.getUTCDate().toString().padStart(2, '0')}`;
+                        return localYMD === utcYMD;
                       });
                     } else {
                       matchedItem = compliance[index];
