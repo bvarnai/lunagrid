@@ -10,25 +10,61 @@ Setup:
   pip install myskoda aiohttp
 
 Run:
-  python tools/wake_enyaq.py
-
-Backend Integration Command:
-  tools/.venv/bin/python tools/wake_enyaq.py
+  python tools/wake_enyaq.py --help
+  python tools/wake_enyaq.py --email email@domain.com --password mypass --vin TMBJJ7N...
 """
-import sys
+import argparse
 import asyncio
+import os
+import sys
 from aiohttp import ClientSession
 from myskoda import MySkoda
 
-# Configuration - customize these variables or set them via env vars
-SKODA_EMAIL = "YOUR_SKODA_ACCOUNT_EMAIL"
-SKODA_PASSWORD = "YOUR_SKODA_PASSWORD"
-VEHICLE_VIN = "YOUR_ENYAQ_VIN"
-
 async def main():
-    if SKODA_EMAIL == "YOUR_SKODA_ACCOUNT_EMAIL":
-        print("Error: Please set your MySkoda account credentials and VIN in tools/wake_enyaq.py.")
-        sys.exit(1)
+    # Setup Argument Parser
+    parser = argparse.ArgumentParser(
+        description="Wake up Skoda Enyaq EV charging loop by triggering air conditioning temporarily."
+    )
+    parser.add_argument(
+        "--email", 
+        type=str, 
+        help="MySkoda account email address (can also be set via SKODA_EMAIL env var)",
+        default=os.environ.get("SKODA_EMAIL")
+    )
+    parser.add_argument(
+        "--password", 
+        type=str, 
+        help="MySkoda account password (can also be set via SKODA_PASSWORD env var)",
+        default=os.environ.get("SKODA_PASSWORD")
+    )
+    parser.add_argument(
+        "--vin", 
+        type=str, 
+        help="Vehicle VIN (can also be set via VEHICLE_VIN env var)",
+        default=os.environ.get("VEHICLE_VIN")
+    )
+    parser.add_argument(
+        "--temp", 
+        type=int, 
+        help="Target temperature in Celsius (default: 21)",
+        default=21
+    )
+    parser.add_argument(
+        "--wait", 
+        type=int, 
+        help="Seconds to wait before turning off air conditioning (default: 30)",
+        default=30
+    )
+
+    args = parser.parse_args()
+
+    # Validate Arguments
+    if not args.email:
+        parser.error("Email is required. Set --email or SKODA_EMAIL environment variable.")
+    if not args.password:
+        parser.error("Password is required. Set --password or SKODA_PASSWORD environment variable.")
+    if not args.vin:
+        parser.error("VIN is required. Set --vin or VEHICLE_VIN environment variable.")
 
     print("Connecting to MySkoda API...")
     async with ClientSession() as session:
@@ -36,16 +72,16 @@ async def main():
         myskoda = MySkoda(session)
         
         # Connect to MySkoda API
-        await myskoda.connect(SKODA_EMAIL, SKODA_PASSWORD)
+        await myskoda.connect(args.email, args.password)
         
         # Retrieve registered VINs
         vins = await myskoda.list_vehicle_vins()
-        if VEHICLE_VIN not in vins:
-            print(f"Error: Enyaq with VIN {VEHICLE_VIN} not found in account (registered VINs: {vins}).")
+        if args.vin not in vins:
+            print(f"Error: Enyaq with VIN {args.vin} not found in account (registered VINs: {vins}).")
             await myskoda.disconnect()
             sys.exit(1)
 
-        print(f"Found Enyaq with VIN: {VEHICLE_VIN}")
+        print(f"Found Enyaq with VIN: {args.vin}")
         
         # Waking up a Skoda Enyaq:
         # The most reliable method to wake the charger module and HV contactor is by triggering 
@@ -53,17 +89,18 @@ async def main():
         # To avoid wasting battery power, we let it run for 30 seconds to wake the charging gateway,
         # and then send the stop command immediately.
         print("Triggering air conditioning to wake up vehicle HV charging circuit...")
-        await myskoda.start_air_conditioning(VEHICLE_VIN, temperature=21)
-        print("Air conditioning started. Waiting 30 seconds for vehicle gateway to wake up...")
+        await myskoda.start_air_conditioning(args.vin, temperature=args.temp)
+        print(f"Air conditioning started. Waiting {args.wait} seconds for vehicle gateway to wake up...")
         
-        await asyncio.sleep(30)
+        await asyncio.sleep(args.wait)
         
         print("Stopping air conditioning to prevent energy waste...")
-        await myskoda.stop_air_conditioning(VEHICLE_VIN)
+        await myskoda.stop_air_conditioning(args.vin)
         print("SUCCESS: Air conditioning stopped. Enyaq is awake and charging should continue.")
         
         # Gracefully disconnect session
         await myskoda.disconnect()
 
 if __name__ == "__main__":
+    # Ensure correct event loop execution for script run
     asyncio.run(main())
