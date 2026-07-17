@@ -171,5 +171,6 @@ If the upload process times out or fails to synchronise with the board (`esptool
 
 ## 7. Additional References
 
+- **Firmware Release & Rollout Guide:** [firmware_release_guide.md](file:///home/bvarnai/workspace/lunagrid/docs/firmware_release_guide.md)
 - **Standalone ESPHome Prototyping Quickstart:** [usb_serial_quickstart.md](file:///c:/Users/bvarnai/workspace/lunagrid/docs/usb_serial_quickstart.md)
 - **Project Abstract & Architecture Specs:** [lunagrid_project_plan.md](file:///c:/Users/bvarnai/workspace/lunagrid/docs/lunagrid_project_plan.md)
