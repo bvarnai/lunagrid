@@ -83,9 +83,9 @@ Once EVCC is running on your local network (e.g. at `http://192.168.1.50:7070`),
 4. Set the **Wake-up Type** to `Webhook (HTTP POST)`.
 5. In the **Webhook Endpoint URL** field, enter:
    ```http
-   http://<YOUR_EVCC_IP>:7070/api/charge/1/wake
+   http://evcc:7070/api/charge/1/wake
    ```
-   *(Note: `1` represents the loadpoint ID in EVCC. If you have multiple loadpoints, replace it with the correct index).*
+   *(Note: Since both `lunagrid-backend` and `evcc` are running in the same Docker Compose network bridge on your NAS, you can use the container name `evcc` directly. If you are running them on different machines, replace `evcc` with your server's local IP address).*
 6. Click **Test Wake-up** to verify the webhook dispatch. The Activity Console logs should register a `200 OK` response.
 
 ---
