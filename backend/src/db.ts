@@ -107,6 +107,10 @@ export const updateLocation = async (id: string, name: string, timezone: string)
   );
 };
 
+export const deleteLocation = async (id: string): Promise<void> => {
+  await runQuery('DELETE FROM locations WHERE id = ?', [id]);
+};
+
 // Devices
 export const getAllDevices = (): Promise<Device[]> => {
   return allQuery<Device>('SELECT * FROM devices ORDER BY registered_at DESC');

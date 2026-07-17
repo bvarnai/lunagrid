@@ -498,6 +498,48 @@ export default function App() {
     }
   };
 
+  // Delete a location
+  const handleDeleteLocation = async (id: string) => {
+    // Check if there is any device currently mapped to this location
+    const boundDevice = devices.find(d => d.location_id === id && d.status === 'ACTIVE');
+    if (boundDevice) {
+      alert(`Cannot delete location. Device "${boundDevice.friendly_name || boundDevice.id}" is currently mapped to it. Unbind the device first.`);
+      return;
+    }
+
+    if (confirm(`Are you sure you want to delete location: ${id}?`)) {
+      if (isBackendConnected) {
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/locations/${id}`, {
+            method: 'DELETE'
+          });
+          if (res.ok) {
+            fetchMetadata();
+            setLogs(prev => [`[SYSTEM] Deleted location ${id}`, ...prev]);
+          } else {
+            const errData = await res.json();
+            alert(errData.error || 'Failed to delete location');
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Failed to connect to backend to delete location');
+        }
+      } else {
+        // Mock delete locally
+        setLocations(prev => prev.filter(l => l.id !== id));
+        // Reset selectedLocationId if it was the deleted one
+        setSelectedLocationId(current => {
+          if (current === id) {
+            const remaining = locations.filter(l => l.id !== id);
+            return remaining.length > 0 ? remaining[0].id : '';
+          }
+          return current;
+        });
+        setLogs(prev => [`[SYSTEM] Deleted mock location ${id}`, ...prev]);
+      }
+    }
+  };
+
   // --- Calculate Today's Hourly Availability Strip ---
   const getHourlyAvailabilityStrip = () => {
     const hours = [];
@@ -732,15 +774,24 @@ export default function App() {
               <h3 style={{ fontSize: '1.1rem' }}>Selected Location Panel</h3>
             </div>
             <select className="form-input" style={{ width: '220px', padding: '0.35rem' }} value={selectedLocationId} onChange={e => setSelectedLocationId(e.target.value)}>
-              {locations.map(l => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
+              {locations.length === 0 ? (
+                <option value="">No Locations Configured</option>
+              ) : (
+                locations.map(l => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))
+              )}
             </select>
           </div>
 
           {/* Current Grid State Hero */}
           <div className="card col-12 status-hero">
-            {(!telemetry.deviceId && isBackendConnected) ? (
+            {locations.length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center' }}>
+                <h3 style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>No Locations Configured</h3>
+                <p style={{ color: '#64748b' }}>Please create a location first in the "Locations & Devices" tab.</p>
+              </div>
+            ) : (!telemetry.deviceId && isBackendConnected) ? (
               <div style={{ padding: '2rem' }}>
                 <h3 style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>No Active Device Bound</h3>
                 <p style={{ color: '#64748b' }}>Please map a device to this location in the "Locations & Devices" tab.</p>
@@ -1043,45 +1094,69 @@ export default function App() {
             )}
 
             <div className="location-mgmt-grid">
-              {locations.map(loc => {
-                // Find currently bound device
-                const boundDevice = devices.find(d => d.location_id === loc.id && d.status === 'ACTIVE');
-                // Eligible devices: unmapped ones, or the device currently mapped to this location
-                const eligibleDevices = devices.filter(d => d.location_id === null || d.location_id === loc.id);
+              {locations.length === 0 ? (
+                <div style={{ padding: '2rem', color: '#64748b', textAlign: 'center', width: '100%', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '0.75rem' }}>
+                  No locations configured in the system. Use the form above to add one.
+                </div>
+              ) : (
+                locations.map(loc => {
+                  // Find currently bound device
+                  const boundDevice = devices.find(d => d.location_id === loc.id && d.status === 'ACTIVE');
+                  // Eligible devices: unmapped ones, or the device currently mapped to this location
+                  const eligibleDevices = devices.filter(d => d.location_id === null || d.location_id === loc.id);
 
-                return (
-                  <div key={loc.id} className="location-mgmt-card">
-                    <div className="location-mgmt-header">
-                      <div>
-                        <strong>{loc.name}</strong>
-                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>ID: {loc.id} | TZ: {loc.timezone}</div>
+                  return (
+                    <div key={loc.id} className="location-mgmt-card">
+                      <div className="location-mgmt-header">
+                        <div>
+                          <strong>{loc.name}</strong>
+                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>ID: {loc.id} | TZ: {loc.timezone}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.35rem' }}>
+                          <button className="btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }} onClick={() => {
+                            setEditingLocId(loc.id);
+                            setEditLocName(loc.name);
+                            setEditLocTimezone(loc.timezone);
+                          }}>
+                            Edit
+                          </button>
+                          <button 
+                            className="btn-secondary" 
+                            style={{ 
+                              padding: '0.2rem 0.6rem', 
+                              fontSize: '0.8rem', 
+                              color: '#ef4444', 
+                              border: '1px solid rgba(239, 68, 68, 0.2)',
+                              background: boundDevice ? 'rgba(239, 68, 68, 0.05)' : 'transparent',
+                              opacity: boundDevice ? 0.4 : 1,
+                              cursor: boundDevice ? 'not-allowed' : 'pointer'
+                            }} 
+                            title={boundDevice ? "Unbind device first to delete location" : "Delete Location"}
+                            onClick={() => handleDeleteLocation(loc.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
-                      <button className="btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }} onClick={() => {
-                        setEditingLocId(loc.id);
-                        setEditLocName(loc.name);
-                        setEditLocTimezone(loc.timezone);
-                      }}>
-                        Edit
-                      </button>
-                    </div>
 
-                    <div className="mapping-control">
-                      <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>Mapped Device (1-to-1):</label>
-                      <select 
-                        className="form-input" 
-                        style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
-                        value={boundDevice ? boundDevice.id : 'unmap'}
-                        onChange={e => handleDeviceMapping(loc.id, e.target.value)}
-                      >
-                        <option value="unmap">None (Unmapped)</option>
-                        {eligibleDevices.map(d => (
-                          <option key={d.id} value={d.id}>{d.friendly_name || d.id}</option>
-                        ))}
-                      </select>
+                      <div className="mapping-control">
+                        <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: '0.35rem' }}>Mapped Device (1-to-1):</label>
+                        <select 
+                          className="form-input" 
+                          style={{ width: '100%', padding: '0.35rem', fontSize: '0.85rem' }}
+                          value={boundDevice ? boundDevice.id : 'unmap'}
+                          onChange={e => handleDeviceMapping(loc.id, e.target.value)}
+                        >
+                          <option value="unmap">None (Unmapped)</option>
+                          {eligibleDevices.map(d => (
+                            <option key={d.id} value={d.id}>{d.friendly_name || d.id}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 

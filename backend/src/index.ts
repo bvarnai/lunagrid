@@ -9,6 +9,7 @@ import {
   getAllLocations, 
   createLocation, 
   updateLocation,
+  deleteLocation,
   getAllDevices, 
   getDeviceById, 
   getDeviceByLocationId,
@@ -124,6 +125,22 @@ app.put('/api/locations/:id', async (req, res) => {
     res.json({ status: 'success', location: { id, name, timezone } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update location' });
+  }
+});
+
+app.delete('/api/locations/:id', async (req, res) => {
+  const id = req.params.id;
+  try {
+    // Check if there is any device currently mapped to this location
+    const device = await getDeviceByLocationId(id);
+    if (device) {
+      return res.status(400).json({ error: 'Cannot delete location. There is an active device mapping. Unbind the device first.' });
+    }
+    await deleteLocation(id);
+    res.json({ status: 'success', message: `Location ${id} deleted successfully` });
+  } catch (error) {
+    console.error('[LOCATIONS] Error deleting location:', error);
+    res.status(500).json({ error: 'Failed to delete location' });
   }
 });
 
