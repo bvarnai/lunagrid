@@ -20,7 +20,7 @@ jobs:
           node-version: 20
 
       - name: Run Version Check Script
-        run: node scripts/check-versions.js
+        run: node tools/check-versions.js
 
   build-backend:
     name: Build Backend
