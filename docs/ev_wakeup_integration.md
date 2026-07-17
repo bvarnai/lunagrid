@@ -90,6 +90,14 @@ If you use EVCC to manage solar charging or smart grid scheduling, you can trigg
    * Set Type to **Webhook (HTTP POST)**.
    * Set Target URL to: `http://<your-evcc-ip>:7070/api/charge/<loadpoint_id>/wake` (replace `<loadpoint_id>` with your active loadpoint ID, typically `1`).
    * This sends an HTTP POST trigger when B-tariff goes ON, prompting EVCC to wake the Skoda Enyaq and begin charging immediately.
+3. **Note on Dumb/Dummy Chargers**:
+   If you have a non-smart ("dumb") charger hooked up permanently, you can configure it as a **`dummy` charger** in EVCC's `evcc.yaml`:
+   ```yaml
+   chargers:
+     - name: my_dumb_charger
+       type: dummy
+   ```
+   In this configuration, EVCC does not communicate with the wallbox; it manages charging states solely by querying your vehicle's API. When the B-tariff turns ON, triggering the `/wake` endpoint tells EVCC to send the wake command to the MySkoda API. The car wakes up, detects the pilot line of your permanently connected charger, and begins charging immediately.
 
 ---
 
