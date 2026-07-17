@@ -1087,23 +1087,23 @@ export default function App() {
                 <div className="timeline-legend" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '1rem', fontSize: '0.85rem' }}>
                   <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                     <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#10b981' }} />
-                    <span>100% Active</span>
+                    <span>100%</span>
                   </div>
                   <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                     <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#84cc16' }} />
-                    <span>75% Active</span>
+                    <span>75%</span>
                   </div>
                   <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                     <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#eab308' }} />
-                    <span>50% Active</span>
+                    <span>50%</span>
                   </div>
                   <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                     <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#f97316' }} />
-                    <span>25% Active</span>
+                    <span>25%</span>
                   </div>
                   <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                     <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#ef4444' }} />
-                    <span>0% Active</span>
+                    <span>0%</span>
                   </div>
                   <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                     <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#374151' }} />
