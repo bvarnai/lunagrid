@@ -26,6 +26,7 @@ Explore our design and guide files:
 - **[Firmware Development Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_development.md):** Environment setups, WSL2 port authorization, and PlatformIO flashing commands.
 - **[Firmware Release & Rollout Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_release_guide.md):** Step-by-step firmware build, Nginx hosting, portal registration, and remote update commands.
 - **[EV Wake-up Integration Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/ev_wakeup_integration.md):** Configuration steps for local scripts or Home Assistant webhooks to wake sleeping EVs.
+- **[EVCC Integration & Setup Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/evcc_integration.md):** Configuration templates for EVCC smart charging controller and dummy charger wallbox bindings.
 - **[ESPHome USB Serial Quickstart](file:///c:/Users/bvarnai/workspace/lunagrid/docs/usb_serial_quickstart.md):** Standalone reference file for basic USB binding and ESPHome setup.
 
 ---
