@@ -35,12 +35,17 @@ async def main():
         # Waking up a Skoda Enyaq:
         # The most reliable method to wake the charger module and HV contactor is by triggering 
         # the remote climatisation (heating/ventilation) for a target temperature.
+        # To avoid wasting battery power, we let it run for 30 seconds to wake the charging gateway,
+        # and then send the stop command immediately.
         print("Triggering climatisation to wake up vehicle HV charging circuit...")
-        
-        # Send start climatisation command
-        # Target temperature is usually required by MySkoda API (e.g. 21.0 C)
         await myskoda.start_climatisation(VEHICLE_VIN, target_temperature=21.0)
-        print("SUCCESS: MySkoda climatisation command sent successfully! Enyaq is waking up.")
+        print("Climatisation started. Waiting 30 seconds for vehicle gateway to wake up...")
+        
+        await asyncio.sleep(30)
+        
+        print("Stopping climatisation to prevent energy waste...")
+        await myskoda.stop_climatisation(VEHICLE_VIN)
+        print("SUCCESS: Climatisation stopped. Enyaq is awake and charging should continue.")
 
 if __name__ == "__main__":
     asyncio.run(main())
