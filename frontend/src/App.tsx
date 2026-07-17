@@ -1023,7 +1023,7 @@ export default function App() {
                   </svg>
                 </div>
                 <h2>{telemetry.gridActive ? 'OFF-PEAK (B-Tariff Active)' : 'ON-PEAK (B-Tariff Inactive)'}</h2>
-                <p>Device: {telemetry.friendlyName || telemetry.deviceId || 'None'} {telemetry.deviceId && `(Firmware v${telemetry.firmwareVersion || '1.0.0'})`}</p>
+                <p>Device: {telemetry.friendlyName || telemetry.deviceId || 'None'}</p>
               </>
             )}
           </div>
@@ -1242,6 +1242,16 @@ export default function App() {
                 </div>
                 <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
                   {telemetry.timestamp ? 'Live updates active' : 'Awaiting heartbeat'}
+                </div>
+              </div>
+
+              <div className="metric-item">
+                <div className="metric-label">Firmware Version</div>
+                <div className="metric-value">
+                  {telemetry.deviceId ? `v${telemetry.firmwareVersion || '1.0.0'}` : 'N/A'}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
+                  {telemetry.deviceId ? 'Running Lunagrid OS' : 'No device connected'}
                 </div>
               </div>
             </div>
