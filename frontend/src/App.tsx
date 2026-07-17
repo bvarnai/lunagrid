@@ -46,7 +46,7 @@ interface RolloutStatus {
 
 interface HistoryItem {
   time: string;
-  active: boolean;
+  value: number; // 0.0 to 1.0 representing active fraction
 }
 
 interface ComplianceItem {
@@ -370,18 +370,26 @@ export default function App() {
     ];
     setReleases(mockReleases);
 
-    // Setup 24h mock history
+    // Setup 30h mock history of hourly averages
     const mockHistory: HistoryItem[] = [];
     const baseTime = new Date();
-    // Simulate some periodic states matching B-Tariff hours (typically 22:00 to 06:00, and 13:00 to 17:00)
-    for (let i = 24; i >= 0; i--) {
+    baseTime.setMinutes(0, 0, 0); // Align to start of hour
+    for (let i = 30; i >= 0; i--) {
       const d = new Date(baseTime.getTime() - i * 60 * 60 * 1000);
       const hour = d.getHours();
-      // True if off-peak B-tariff (simplified rule)
-      const active = (hour >= 22 || hour < 6 || (hour >= 13 && hour < 17));
+      
+      let val = 0.0;
+      if (hour >= 22 || hour < 6 || (hour >= 13 && hour < 17)) {
+        val = 1.0;
+      } else if (hour === 21 || hour === 6 || hour === 12 || hour === 17) {
+        // Randomly assign partial fractions (25%, 50%, 75%)
+        const fracs = [0.25, 0.5, 0.75];
+        val = fracs[(i + hour) % fracs.length];
+      }
+
       mockHistory.push({
         time: d.toISOString(),
-        active: active
+        value: val
       });
     }
     setHistory(mockHistory);
@@ -777,27 +785,29 @@ export default function App() {
       if (targetTime > now) {
         hours.push({
           label: `${hourLabel} (Future)`,
-          active: null
+          value: null
         });
         continue;
       }
 
-      // Get closest point in time in history
-      let closestPoint: HistoryItem | null = null;
+      // Find the aggregated point for this specific hour today.
+      // Since the backend query aggregates by 1h using timeSrc: "_start",
+      // we look for a history point that matches the hour's start time exactly (or within 5 minutes).
+      let matchedPoint: HistoryItem | null = null;
       let minDiff = Infinity;
       
       for (const item of history) {
         const itemTime = new Date(item.time).getTime();
         const diff = Math.abs(itemTime - targetTime);
-        if (diff < minDiff && itemTime <= targetTime) {
+        if (diff < minDiff && diff < 5 * 60 * 1000) {
           minDiff = diff;
-          closestPoint = item;
+          matchedPoint = item;
         }
       }
 
       hours.push({
         label: hourLabel,
-        active: closestPoint ? closestPoint.active : null
+        value: matchedPoint ? matchedPoint.value : null
       });
     }
     return hours;
@@ -1037,18 +1047,36 @@ export default function App() {
               <div className="timeline-container">
                 <div className="strip">
                   {hourlyStrip.map((block, idx) => {
-                    let typeClass = 'nodata';
+                    let bgColor = '#374151'; // default no data / grey
                     let statusLabel = 'No Data';
-                    if (block.active === true) {
-                      typeClass = 'active';
-                      statusLabel = 'OFF-PEAK (B-Tariff Active)';
-                    } else if (block.active === false) {
-                      typeClass = 'inactive';
-                      statusLabel = 'ON-PEAK (B-Tariff Inactive)';
+
+                    if (block.value !== null) {
+                      const percentage = Math.round(block.value * 100);
+                      statusLabel = `${percentage}% Active (Off-Peak)`;
+
+                      if (block.value <= 0.05) {
+                        bgColor = '#ef4444'; // 0% active (red)
+                      } else if (block.value <= 0.35) {
+                        bgColor = '#f97316'; // 25% active (orange)
+                      } else if (block.value <= 0.65) {
+                        bgColor = '#eab308'; // 50% active (yellow)
+                      } else if (block.value <= 0.95) {
+                        bgColor = '#84cc16'; // 75% active (lime)
+                      } else {
+                        bgColor = '#10b981'; // 100% active (green)
+                      }
+                    } else {
+                      if (block.label.includes('Future')) {
+                        statusLabel = 'Future Slot';
+                      }
                     }
 
                     return (
-                      <div key={idx} className={`strip-block ${typeClass}`}>
+                      <div 
+                        key={idx} 
+                        className="strip-block" 
+                        style={{ backgroundColor: bgColor }}
+                      >
                         <div className="tooltip">
                           <strong>{block.label}</strong>: {statusLabel}
                         </div>
@@ -1056,17 +1084,29 @@ export default function App() {
                     );
                   })}
                 </div>
-                <div className="timeline-legend">
-                  <div className="legend-item">
-                    <div className="legend-color" style={{ backgroundColor: '#10b981' }} />
-                    <span>Active B-Tariff (Off-Peak)</span>
+                <div className="timeline-legend" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '1rem', fontSize: '0.85rem' }}>
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#10b981' }} />
+                    <span>100% Active</span>
                   </div>
-                  <div className="legend-item">
-                    <div className="legend-color" style={{ backgroundColor: '#ef4444' }} />
-                    <span>Dead B-Tariff (On-Peak)</span>
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#84cc16' }} />
+                    <span>75% Active</span>
                   </div>
-                  <div className="legend-item">
-                    <div className="legend-color" style={{ backgroundColor: '#374151' }} />
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#eab308' }} />
+                    <span>50% Active</span>
+                  </div>
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#f97316' }} />
+                    <span>25% Active</span>
+                  </div>
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#ef4444' }} />
+                    <span>0% Active</span>
+                  </div>
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <div className="legend-color" style={{ width: '0.75rem', height: '0.75rem', borderRadius: '2px', backgroundColor: '#374151' }} />
                     <span>No Records</span>
                   </div>
                 </div>

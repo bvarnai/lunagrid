@@ -190,7 +190,7 @@ app.get('/api/locations/:id/telemetry', async (req, res) => {
   }
 });
 
-// Query InfluxDB securely for last 24h history for a location's device
+// Query InfluxDB securely for last 30h history of hourly B-tariff averages
 app.get('/api/locations/:id/history', async (req, res) => {
   const locationId = req.params.id;
   try {
@@ -201,9 +201,12 @@ app.get('/api/locations/:id/history', async (req, res) => {
 
     // Secure Flux Query targeting the device's timeline
     const fluxQuery = `from(bucket: "lunagrid-telemetry")
-  |> range(start: -24h)
+  |> range(start: -30h)
   |> filter(fn: (r) => r["_measurement"] == "mqtt_consumer" and r["device_id"] == "${device.id}")
-  |> filter(fn: (r) => r["_field"] == "grid_active")
+  |> filter(fn: (r) => r["_field"] == "metrics_grid_active")
+  |> group()
+  |> map(fn: (r) => ({ r with _value: if string(v: r._value) == "true" then 1.0 else 0.0 }))
+  |> aggregateWindow(every: 1h, fn: mean, createEmpty: false, timeSrc: "_start")
   |> keep(columns: ["_time", "_value"])`;
 
     // Query InfluxDB container securely using Node 20 fetch
@@ -223,18 +226,18 @@ app.get('/api/locations/:id/history', async (req, res) => {
 
     const csvText = await response.text();
     const lines = csvText.split('\n');
-    const history: Array<{ time: string; active: boolean }> = [];
+    const history: Array<{ time: string; value: number }> = [];
 
     for (const line of lines) {
       const parts = line.split(',');
-      // Parse CSV result rows from InfluxDB query engine
-      // Since the Flux query keeps only _time and _value, columns are: ,result,table,_time,_value (length of 5)
       if (parts.length >= 5 && parts[0] === '' && (parts[1] === '_result' || parts[1] === 'result')) {
         if (parts[3] === '_time') continue; // Skip header row
         
         const time = parts[3];
-        const active = parts[4].trim() === 'true';
-        history.push({ time, active });
+        const value = parseFloat(parts[4]);
+        if (!isNaN(value)) {
+          history.push({ time, value });
+        }
       }
     }
 
