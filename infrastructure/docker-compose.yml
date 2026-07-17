@@ -72,6 +72,18 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
     restart: unless-stopped
 
+  # EVCC - Energy Management and Smart Charging
+  evcc:
+    image: evcc/evcc:latest
+    container_name: lunagrid-evcc
+    ports:
+      - "7070:7070"
+    volumes:
+      - ./evcc/evcc.yaml:/etc/evcc.yaml
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 volumes:
   mosquitto-data:
   mosquitto-log:

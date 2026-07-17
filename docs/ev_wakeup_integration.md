@@ -79,25 +79,27 @@ If you prefer a standalone script that connects directly to the Skoda Connect AP
      ```
      *(This runs the script using the virtual environment's Python interpreter directly, avoiding any global package conflicts).*
 
+### Recipe C: EVCC (Electric Vehicle Charge Controller) HTTP Polling (Recommended)
+If you use EVCC to manage charging, you can configure it to query the Lunagrid backend REST API directly. This provides a 100% native integration where EVCC manages the charger status and vehicle wake-up itself.
+
+1. **How EVCC handles status**:
+   EVCC polls the Lunagrid `/telemetry` endpoint. When the B-tariff turns ON, EVCC detects that the charger state has transitioned from `A` (disconnected) to `B` (connected).
+2. **How EVCC handles wake-up**:
+   Because the loadpoint is configured in `now` mode and the vehicle is connected but asleep, EVCC natively triggers its built-in Škoda API wakeup sequence to wake the Enyaq and begin charging.
+3. **No Webhook Required**:
+   In this unified HTTP polling configuration, you do not need to configure any webhooks or local wakeup scripts in the Lunagrid web portal. EVCC manages the entire state machine on its own.
+
 ---
 
-### Recipe C: EVCC (Electric Vehicle Charge Controller) Webhook
-If you use EVCC to manage solar charging or smart grid scheduling, you can trigger its remote vehicle wake API directly.
+### Recipe D: EVCC (Electric Vehicle Charge Controller) Webhook Trigger (Alternative)
+If you prefer a push-based wakeup trigger and configure EVCC's charger with static values, you can use the Lunagrid portal's webhook to hit EVCC's wake endpoint.
 
-1. **How EVCC handles wakeups**:
-   EVCC integrates with the MySkoda API on your behalf. When a charger loadpoint is connected but the vehicle is in a deep sleep, EVCC exposes an API endpoint to wake the vehicle up.
-2. **In the Lunagrid portal**:
-   * Set Type to **Webhook (HTTP POST)**.
-   * Set Target URL to: `http://evcc:7070/api/charge/1/wake` (since both the backend and EVCC run in the same Docker Compose network bridge, you can use the container name `evcc` directly instead of your server IP address).
-   * This sends an HTTP POST trigger when B-tariff goes ON, prompting EVCC to wake the Skoda Enyaq and begin charging immediately.
-3. **Note on Dumb/Dummy Chargers**:
-   If you have a non-smart ("dumb") charger hooked up permanently, you can configure it as a **`dummy` charger** in EVCC's `evcc.yaml`:
-   ```yaml
-   chargers:
-     - name: my_dumb_charger
-       type: dummy
-   ```
-   In this configuration, EVCC does not communicate with the wallbox; it manages charging states solely by querying your vehicle's API. When the B-tariff turns ON, triggering the `/wake` endpoint tells EVCC to send the wake command to the MySkoda API. The car wakes up, detects the pilot line of your permanently connected charger, and begins charging immediately.
+1. **How EVCC is configured:** In `/etc/evcc.yaml`, the custom charger uses static values (status `B`, enabled `true`). EVCC assumes the charger is permanently connected.
+2. **Configure the Lunagrid portal:**
+   * Navigate to the **Locations & Devices** tab.
+   * Under your location card's **EV Wake-up Integration** panel, select Type: **Webhook (HTTP POST)**.
+   * Set Target URL to: `http://evcc:7070/api/charge/1/wake` (or use the host IP).
+3. **How it works:** When B-tariff turns ON, Lunagrid dispatches a webhook POST to EVCC's `/wake` endpoint. EVCC receives this and triggers the vehicle wakeup call via the Škoda API, starting the charge session since B-tariff grid power is now physically present.
 
 ---
 
