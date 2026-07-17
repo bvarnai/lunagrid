@@ -4,6 +4,10 @@ interface Location {
   id: string;
   name: string;
   timezone: string;
+  ev_wakeup_enabled?: number;
+  ev_wakeup_type?: string;
+  ev_wakeup_target?: string;
+  ev_wakeup_headers?: string;
 }
 
 interface Device {
@@ -767,6 +771,68 @@ export default function App() {
     }
   };
 
+  const handleUpdateWakeupSettings = async (
+    locationId: string,
+    settings: { enabled: boolean; type: string; target: string; headers: string }
+  ) => {
+    setLocations(prev =>
+      prev.map(l =>
+        l.id === locationId
+          ? {
+              ...l,
+              ev_wakeup_enabled: settings.enabled ? 1 : 0,
+              ev_wakeup_type: settings.type,
+              ev_wakeup_target: settings.target,
+              ev_wakeup_headers: settings.headers
+            }
+          : l
+      )
+    );
+
+    if (isBackendConnected) {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/wakeup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings)
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          console.error('Failed to save EV wake-up settings:', errData.error);
+        } else {
+          setLogs(prev => [`[SYSTEM] Updated EV wake-up settings for location: ${locationId}`, ...prev]);
+        }
+      } catch (err) {
+        console.error('Failed to connect to backend to save EV wake-up settings:', err);
+      }
+    } else {
+      setLogs(prev => [`[MOCK] Updated EV wake-up settings for location: ${locationId} (Local Only)`, ...prev]);
+    }
+  };
+
+  const handleTestWakeup = async (locationId: string) => {
+    if (!isBackendConnected) {
+      alert('[MOCK] EV Wake-up test triggered (Standalone Mock Mode - check console logs)');
+      setLogs(prev => [`[MOCK EV WAKEUP TEST] Triggered locally for ${locationId}`, ...prev]);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/wakeup/test`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        alert('EV wake-up test triggered successfully! Check the system logs for status.');
+      } else {
+        const errData = await res.json();
+        alert(`Test trigger failed: ${errData.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to connect to backend to trigger wake-up test.');
+    }
+  };
+
   // --- Calculate Today's Hourly Availability Strip ---
   const getHourlyAvailabilityStrip = () => {
     const hours = [];
@@ -1421,6 +1487,96 @@ export default function App() {
                             <option key={d.id} value={d.id}>{d.friendly_name || d.id}</option>
                           ))}
                         </select>
+                      </div>
+
+                      {/* EV Wake-up Integration Control */}
+                      <div className="ev-wakeup-control" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>EV Wake-up Integration</span>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={loc.ev_wakeup_enabled === 1}
+                              onChange={e => handleUpdateWakeupSettings(loc.id, {
+                                enabled: e.target.checked,
+                                type: loc.ev_wakeup_type || 'webhook',
+                                target: loc.ev_wakeup_target || '',
+                                headers: loc.ev_wakeup_headers || ''
+                              })}
+                              style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Enabled</span>
+                          </label>
+                        </div>
+
+                        {loc.ev_wakeup_enabled === 1 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                            <div>
+                              <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Wake-up Type:</label>
+                              <select
+                                className="form-input"
+                                style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem' }}
+                                value={loc.ev_wakeup_type || 'webhook'}
+                                onChange={e => handleUpdateWakeupSettings(loc.id, {
+                                  enabled: true,
+                                  type: e.target.value,
+                                  target: loc.ev_wakeup_target || '',
+                                  headers: loc.ev_wakeup_headers || ''
+                                })}
+                              >
+                                <option value="webhook">Webhook (HTTP POST)</option>
+                                <option value="script">Local Shell Script / CLI</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                {loc.ev_wakeup_type === 'script' ? 'Local Script / CLI Command:' : 'Webhook Endpoint URL:'}
+                              </label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem' }}
+                                placeholder={loc.ev_wakeup_type === 'script' ? 'e.g. myskoda climatisation start --vin ...' : 'e.g. http://192.168.1.50:8123/api/webhook/...'}
+                                value={loc.ev_wakeup_target || ''}
+                                onChange={e => handleUpdateWakeupSettings(loc.id, {
+                                  enabled: true,
+                                  type: loc.ev_wakeup_type || 'webhook',
+                                  target: e.target.value,
+                                  headers: loc.ev_wakeup_headers || ''
+                                })}
+                              />
+                            </div>
+
+                            {loc.ev_wakeup_type === 'webhook' && (
+                              <div>
+                                <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Custom HTTP Headers (JSON, optional):</label>
+                                <textarea
+                                  className="form-input"
+                                  style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem', fontFamily: 'monospace', height: '50px', resize: 'vertical' }}
+                                  placeholder='e.g. {"Authorization": "Bearer tok..."}'
+                                  value={loc.ev_wakeup_headers || ''}
+                                  onChange={e => handleUpdateWakeupSettings(loc.id, {
+                                    enabled: true,
+                                    type: loc.ev_wakeup_type || 'webhook',
+                                    target: loc.ev_wakeup_target || '',
+                                    headers: e.target.value
+                                  })}
+                                />
+                              </div>
+                            )}
+
+                            <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.25rem' }}>
+                              <button 
+                                className="btn-secondary" 
+                                style={{ width: '100%', padding: '0.3rem', fontSize: '0.8rem', background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.2)', color: '#10b981' }}
+                                onClick={() => handleTestWakeup(loc.id)}
+                              >
+                                Test Wake-up
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

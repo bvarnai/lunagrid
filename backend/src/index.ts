@@ -4,6 +4,7 @@ import * as dotenv from 'dotenv';
 import cors from 'cors';
 import { readFileSync } from 'fs';
 import path from 'path';
+import { exec } from 'child_process';
 import { 
   initDb, 
   getAllLocations, 
@@ -19,7 +20,9 @@ import {
   unregisterDevice,
   getAllReleases,
   createRelease,
-  deleteRelease
+  deleteRelease,
+  getLocationById,
+  updateLocationEvWakeup
 } from './db.js'; // Note the .js extension for ES Module compatibility
 
 dotenv.config();
@@ -314,6 +317,135 @@ app.get('/api/locations/:id/compliance', async (req, res) => {
   }
 });
 
+// --- EV Wake-up Integration Trigger and Endpoints ---
+
+async function triggerEvWakeup(locationId: string, isManualTest: boolean = false) {
+  try {
+    const location = await getLocationById(locationId);
+    if (!location) {
+      console.warn(`[EV WAKEUP] Location ${locationId} not found.`);
+      return { success: false, error: 'Location not found' };
+    }
+
+    if (!isManualTest && (!location.ev_wakeup_enabled || location.ev_wakeup_enabled === 0)) {
+      return { success: false, error: 'Integration disabled' };
+    }
+
+    const target = location.ev_wakeup_target || '';
+    if (!target.trim()) {
+      const msg = `[EV WAKEUP] No wake-up target configured for location ${location.name}.`;
+      console.warn(msg);
+      addLog(msg);
+      return { success: false, error: 'No target configured' };
+    }
+
+    const type = location.ev_wakeup_type || 'webhook';
+    const logPrefix = isManualTest ? '[EV WAKEUP TEST]' : '[EV WAKEUP]';
+    const startMsg = `${logPrefix} Triggering wake-up for location: ${location.name} (${type})`;
+    console.log(startMsg);
+    addLog(startMsg);
+
+    if (type === 'webhook') {
+      let customHeaders: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+
+      if (location.ev_wakeup_headers) {
+        try {
+          const parsed = JSON.parse(location.ev_wakeup_headers);
+          customHeaders = { ...customHeaders, ...parsed };
+        } catch (e) {
+          const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON headers: ${e instanceof Error ? e.message : String(e)}`;
+          console.warn(warnMsg);
+          addLog(warnMsg);
+        }
+      }
+
+      const body = JSON.stringify({
+        event: isManualTest ? 'TEST_WAKEUP' : 'B_TARIFF_ON',
+        locationId: location.id,
+        locationName: location.name,
+        timestamp: Date.now()
+      });
+
+      const response = await fetch(target, {
+        method: 'POST',
+        headers: customHeaders,
+        body
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        const errMsg = `${logPrefix} Webhook failed with status ${response.status}: ${errText}`;
+        console.error(errMsg);
+        addLog(errMsg);
+        return { success: false, error: `Status ${response.status}`, details: errText };
+      }
+
+      const successMsg = `${logPrefix} Webhook dispatched successfully to ${target}.`;
+      console.log(successMsg);
+      addLog(successMsg);
+      return { success: true };
+
+    } else if (type === 'script') {
+      return new Promise<{ success: boolean; error?: string }>((resolve) => {
+        exec(target, (err, stdout, stderr) => {
+          if (err) {
+            const errMsg = `${logPrefix} Script execution failed: ${err.message}`;
+            console.error(errMsg);
+            addLog(errMsg);
+            resolve({ success: false, error: err.message });
+          } else {
+            const successMsg = `${logPrefix} Script executed successfully. Output: ${stdout.trim()}`;
+            console.log(successMsg);
+            addLog(successMsg);
+            resolve({ success: true });
+          }
+        });
+      });
+    }
+
+    return { success: false, error: 'Unknown integration type' };
+  } catch (error) {
+    const errMsg = `[EV WAKEUP] Unexpected error: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(errMsg);
+    addLog(errMsg);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+// Update EV wake-up settings for a location
+app.post('/api/locations/:id/wakeup', async (req, res) => {
+  const locationId = req.params.id;
+  const { enabled, type, target, headers } = req.body;
+
+  if (typeof enabled !== 'boolean' || !type || target === undefined) {
+    return res.status(400).json({ error: 'enabled (boolean), type, and target are required' });
+  }
+
+  try {
+    await updateLocationEvWakeup(locationId, enabled, type, target, headers || '');
+    res.json({ status: 'success', message: 'EV wake-up settings updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update EV wake-up settings' });
+  }
+});
+
+// Trigger a manual EV wake-up test
+app.post('/api/locations/:id/wakeup/test', async (req, res) => {
+  const locationId = req.params.id;
+  try {
+    const result = await triggerEvWakeup(locationId, true);
+    if (result.success) {
+      res.json({ status: 'success', message: 'EV wake-up test triggered successfully' });
+    } else {
+      res.status(500).json({ error: result.error, details: 'details' in result ? (result as any).details : undefined });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 // Devices API
 app.get('/api/devices', async (req, res) => {
   try {
@@ -533,10 +665,22 @@ const startServer = async () => {
         };
       }
 
+      const device = await getDeviceById(deviceId);
+
       // Update in-memory telemetry cache
       if (messageType === 'state') {
-        telemetryCache[deviceId].gridActive = payload.grid_active;
+        const previousState = telemetryCache[deviceId].gridActive;
+        const newState = payload.grid_active;
+        
+        telemetryCache[deviceId].gridActive = newState;
         telemetryCache[deviceId].timestamp = Date.now();
+
+        // Trigger EV wake-up if transitioning from OFF-PEAK (false) to ON-PEAK (true)
+        if (newState === true && previousState === false && device?.location_id) {
+          triggerEvWakeup(device.location_id).catch(err => {
+            console.error('[EV WAKEUP] Trigger failed:', err);
+          });
+        }
       } else if (messageType === 'telemetry') {
         telemetryCache[deviceId].uptime = payload.metrics.uptime_seconds;
         telemetryCache[deviceId].freeHeap = payload.metrics.free_heap_bytes;
@@ -545,7 +689,6 @@ const startServer = async () => {
         telemetryCache[deviceId].timestamp = Date.now();
       }
 
-      const device = await getDeviceById(deviceId);
       const enrichedPayload = {
         ...payload,
         device_id: deviceId,

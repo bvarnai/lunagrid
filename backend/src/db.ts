@@ -12,6 +12,10 @@ export interface Location {
   name: string;
   timezone: string;
   created_at?: string;
+  ev_wakeup_enabled?: number;
+  ev_wakeup_type?: string;
+  ev_wakeup_target?: string;
+  ev_wakeup_headers?: string;
 }
 
 export interface Device {
@@ -80,6 +84,23 @@ export const initDb = async (): Promise<void> => {
     )
   `);
 
+  // Run migrations to add EV Wakeup fields to locations if they don't exist
+  const addColumnSafe = async (colName: string, colDef: string) => {
+    try {
+      await runQuery(`ALTER TABLE locations ADD COLUMN ${colName} ${colDef}`);
+      console.log(`[DATABASE] Migration: Added column '${colName}' to locations table.`);
+    } catch (err: any) {
+      if (!err.message.includes('duplicate column name')) {
+        console.error(`[DATABASE] Migration Error adding ${colName}:`, err);
+      }
+    }
+  };
+
+  await addColumnSafe('ev_wakeup_enabled', 'INTEGER DEFAULT 0');
+  await addColumnSafe('ev_wakeup_type', 'TEXT DEFAULT \'webhook\'');
+  await addColumnSafe('ev_wakeup_target', 'TEXT DEFAULT \'\'');
+  await addColumnSafe('ev_wakeup_headers', 'TEXT DEFAULT \'\'');
+
   // Seed default locations if empty
   const locationCount = await getQuery<{ count: number }>('SELECT COUNT(*) as count FROM locations');
   if (locationCount && locationCount.count === 0) {
@@ -118,6 +139,23 @@ export const updateLocation = async (id: string, name: string, timezone: string)
 
 export const deleteLocation = async (id: string): Promise<void> => {
   await runQuery('DELETE FROM locations WHERE id = ?', [id]);
+};
+
+export const getLocationById = (id: string): Promise<Location | undefined> => {
+  return getQuery<Location>('SELECT * FROM locations WHERE id = ?', [id]);
+};
+
+export const updateLocationEvWakeup = async (
+  id: string,
+  enabled: boolean,
+  type: string,
+  target: string,
+  headers: string
+): Promise<void> => {
+  await runQuery(
+    'UPDATE locations SET ev_wakeup_enabled = ?, ev_wakeup_type = ?, ev_wakeup_target = ?, ev_wakeup_headers = ? WHERE id = ?',
+    [enabled ? 1 : 0, type, target, headers, id]
+  );
 };
 
 // Devices
