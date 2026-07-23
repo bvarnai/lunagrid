@@ -1525,19 +1525,30 @@ export default function App() {
                                 })}
                               >
                                 <option value="webhook">Webhook (HTTP POST)</option>
+                                <option value="ntfy">ntfy Notification Service</option>
                                 <option value="script">Local Shell Script / CLI</option>
                               </select>
                             </div>
 
                             <div>
                               <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                {loc.ev_wakeup_type === 'script' ? 'Local Script / CLI Command:' : 'Webhook Endpoint URL:'}
+                                {loc.ev_wakeup_type === 'script'
+                                  ? 'Local Script / CLI Command:'
+                                  : loc.ev_wakeup_type === 'ntfy'
+                                  ? 'ntfy Topic URL:'
+                                  : 'Webhook Endpoint URL:'}
                               </label>
                               <input
                                 type="text"
                                 className="form-input"
                                 style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem' }}
-                                placeholder={loc.ev_wakeup_type === 'script' ? 'e.g. myskoda climatisation start --vin ...' : 'e.g. http://192.168.1.50:8123/api/webhook/...'}
+                                placeholder={
+                                  loc.ev_wakeup_type === 'script'
+                                    ? 'e.g. myskoda climatisation start --vin ...'
+                                    : loc.ev_wakeup_type === 'ntfy'
+                                    ? 'e.g. https://ntfy.sh/my_secret_topic'
+                                    : 'e.g. http://192.168.1.50:8123/api/webhook/...'
+                                }
                                 value={loc.ev_wakeup_target || ''}
                                 onChange={e => handleUpdateWakeupSettings(loc.id, {
                                   enabled: true,
@@ -1548,13 +1559,21 @@ export default function App() {
                               />
                             </div>
 
-                            {loc.ev_wakeup_type === 'webhook' && (
+                            {(loc.ev_wakeup_type === 'webhook' || loc.ev_wakeup_type === 'ntfy') && (
                               <div>
-                                <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Custom HTTP Headers (JSON, optional):</label>
+                                <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                  {loc.ev_wakeup_type === 'ntfy'
+                                    ? 'Custom HTTP Headers (JSON, optional - e.g. custom Priority/Tags):'
+                                    : 'Custom HTTP Headers (JSON, optional):'}
+                                </label>
                                 <textarea
                                   className="form-input"
                                   style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem', fontFamily: 'monospace', height: '50px', resize: 'vertical' }}
-                                  placeholder='e.g. {"Authorization": "Bearer tok..."}'
+                                  placeholder={
+                                    loc.ev_wakeup_type === 'ntfy'
+                                      ? 'e.g. {"Priority": "urgent", "Tags": "zap,battery"}'
+                                      : 'e.g. {"Authorization": "Bearer tok..."}'
+                                  }
                                   value={loc.ev_wakeup_headers || ''}
                                   onChange={e => handleUpdateWakeupSettings(loc.id, {
                                     enabled: true,

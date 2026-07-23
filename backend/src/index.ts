@@ -387,6 +387,47 @@ async function triggerEvWakeup(locationId: string, isManualTest: boolean = false
       addLog(successMsg);
       return { success: true };
 
+    } else if (type === 'ntfy') {
+      let customHeaders: Record<string, string> = {
+        'Title': isManualTest ? 'EV Wake-up Test' : `EV Wake-up: B-tariff ON (${location.name})`,
+        'Priority': 'high',
+        'Tags': 'electric_plug,car'
+      };
+
+      if (location.ev_wakeup_headers) {
+        try {
+          const parsed = JSON.parse(location.ev_wakeup_headers);
+          customHeaders = { ...customHeaders, ...parsed };
+        } catch (e) {
+          const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON headers: ${e instanceof Error ? e.message : String(e)}`;
+          console.warn(warnMsg);
+          addLog(warnMsg);
+        }
+      }
+
+      const body = isManualTest
+        ? `Test notification sent successfully for location: ${location.name}`
+        : `B-tariff (low-cost electricity) is now ON at location "${location.name}". Charging/wake-up signal has been sent to the EV.`;
+
+      const response = await fetch(target, {
+        method: 'POST',
+        headers: customHeaders,
+        body
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        const errMsg = `${logPrefix} ntfy push failed with status ${response.status}: ${errText}`;
+        console.error(errMsg);
+        addLog(errMsg);
+        return { success: false, error: `Status ${response.status}`, details: errText };
+      }
+
+      const successMsg = `${logPrefix} ntfy push notification dispatched successfully to ${target}.`;
+      console.log(successMsg);
+      addLog(successMsg);
+      return { success: true };
+
     } else if (type === 'script') {
       return new Promise<{ success: boolean; error?: string }>((resolve) => {
         exec(target, (err, stdout, stderr) => {
