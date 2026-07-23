@@ -59,6 +59,16 @@ interface ComplianceItem {
   compliant: boolean;
 }
 
+// Helper to generate a stable, secure-looking hash suffix from a string
+const getStableSuffix = (str: string): string => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36).substring(0, 6);
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'management' | 'settings'>('dashboard');
   
@@ -128,6 +138,10 @@ export default function App() {
   const [enrollFriendlyName, setEnrollFriendlyName] = useState('');
   const [enrollLocationId, setEnrollLocationId] = useState('');
   const [showEnrollForm, setShowEnrollForm] = useState(false);
+
+  // Temporary input states for EV wake-up settings to prevent periodic poll overwrites while typing
+  const [tempWakeupTarget, setTempWakeupTarget] = useState<Record<string, string>>({});
+  const [tempWakeupHeaders, setTempWakeupHeaders] = useState<Record<string, string>>({});
 
   // 1. Fetch Metadata (Locations, Devices, and Releases)
   const fetchMetadata = async () => {
@@ -801,12 +815,32 @@ export default function App() {
           console.error('Failed to save EV wake-up settings:', errData.error);
         } else {
           setLogs(prev => [`[SYSTEM] Updated EV wake-up settings for location: ${locationId}`, ...prev]);
+          setTempWakeupTarget(prev => {
+            const copy = { ...prev };
+            delete copy[locationId];
+            return copy;
+          });
+          setTempWakeupHeaders(prev => {
+            const copy = { ...prev };
+            delete copy[locationId];
+            return copy;
+          });
         }
       } catch (err) {
         console.error('Failed to connect to backend to save EV wake-up settings:', err);
       }
     } else {
       setLogs(prev => [`[MOCK] Updated EV wake-up settings for location: ${locationId} (Local Only)`, ...prev]);
+      setTempWakeupTarget(prev => {
+        const copy = { ...prev };
+        delete copy[locationId];
+        return copy;
+      });
+      setTempWakeupHeaders(prev => {
+        const copy = { ...prev };
+        delete copy[locationId];
+        return copy;
+      });
     }
   };
 
@@ -1500,8 +1534,8 @@ export default function App() {
                               onChange={e => handleUpdateWakeupSettings(loc.id, {
                                 enabled: e.target.checked,
                                 type: loc.ev_wakeup_type || 'webhook',
-                                target: loc.ev_wakeup_target || '',
-                                headers: loc.ev_wakeup_headers || ''
+                                target: tempWakeupTarget[loc.id] !== undefined ? tempWakeupTarget[loc.id] : (loc.ev_wakeup_target || ''),
+                                headers: tempWakeupHeaders[loc.id] !== undefined ? tempWakeupHeaders[loc.id] : (loc.ev_wakeup_headers || '')
                               })}
                               style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
                             />
@@ -1520,8 +1554,8 @@ export default function App() {
                                 onChange={e => handleUpdateWakeupSettings(loc.id, {
                                   enabled: true,
                                   type: e.target.value,
-                                  target: loc.ev_wakeup_target || '',
-                                  headers: loc.ev_wakeup_headers || ''
+                                  target: tempWakeupTarget[loc.id] !== undefined ? tempWakeupTarget[loc.id] : (loc.ev_wakeup_target || ''),
+                                  headers: tempWakeupHeaders[loc.id] !== undefined ? tempWakeupHeaders[loc.id] : (loc.ev_wakeup_headers || '')
                                 })}
                               >
                                 <option value="webhook">Webhook (HTTP POST)</option>
@@ -1546,16 +1580,22 @@ export default function App() {
                                   loc.ev_wakeup_type === 'script'
                                     ? 'e.g. myskoda climatisation start --vin ...'
                                     : loc.ev_wakeup_type === 'ntfy'
-                                    ? 'e.g. https://ntfy.sh/my_secret_topic'
+                                    ? `e.g. https://ntfy.sh/lunagrid-${loc.id || 'wakeup'}-${getStableSuffix(loc.id || '')}`
                                     : 'e.g. http://192.168.1.50:8123/api/webhook/...'
                                 }
-                                value={loc.ev_wakeup_target || ''}
-                                onChange={e => handleUpdateWakeupSettings(loc.id, {
+                                value={tempWakeupTarget[loc.id] !== undefined ? tempWakeupTarget[loc.id] : (loc.ev_wakeup_target || '')}
+                                onChange={e => setTempWakeupTarget(prev => ({ ...prev, [loc.id]: e.target.value }))}
+                                onBlur={() => handleUpdateWakeupSettings(loc.id, {
                                   enabled: true,
                                   type: loc.ev_wakeup_type || 'webhook',
-                                  target: e.target.value,
-                                  headers: loc.ev_wakeup_headers || ''
+                                  target: tempWakeupTarget[loc.id] !== undefined ? tempWakeupTarget[loc.id] : (loc.ev_wakeup_target || ''),
+                                  headers: tempWakeupHeaders[loc.id] !== undefined ? tempWakeupHeaders[loc.id] : (loc.ev_wakeup_headers || '')
                                 })}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    e.currentTarget.blur();
+                                  }
+                                }}
                               />
                             </div>
 
@@ -1574,12 +1614,13 @@ export default function App() {
                                       ? 'e.g. {"Priority": "urgent", "Tags": "zap,battery"}'
                                       : 'e.g. {"Authorization": "Bearer tok..."}'
                                   }
-                                  value={loc.ev_wakeup_headers || ''}
-                                  onChange={e => handleUpdateWakeupSettings(loc.id, {
+                                  value={tempWakeupHeaders[loc.id] !== undefined ? tempWakeupHeaders[loc.id] : (loc.ev_wakeup_headers || '')}
+                                  onChange={e => setTempWakeupHeaders(prev => ({ ...prev, [loc.id]: e.target.value }))}
+                                  onBlur={() => handleUpdateWakeupSettings(loc.id, {
                                     enabled: true,
                                     type: loc.ev_wakeup_type || 'webhook',
-                                    target: loc.ev_wakeup_target || '',
-                                    headers: e.target.value
+                                    target: tempWakeupTarget[loc.id] !== undefined ? tempWakeupTarget[loc.id] : (loc.ev_wakeup_target || ''),
+                                    headers: tempWakeupHeaders[loc.id] !== undefined ? tempWakeupHeaders[loc.id] : (loc.ev_wakeup_headers || '')
                                   })}
                                 />
                               </div>
