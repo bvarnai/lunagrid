@@ -125,16 +125,16 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 > For step-by-step instructions on setting up the local build environment, configuring WSL2/usbipd, and compiling/flashing the firmware, refer to the [Firmware Development Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_development.md).
 
 ### 4.1 State Machine Architecture
-*   `BOOT` -> Initialize GPIOs, configure internal pull-up on GPIO 2, mount LittleFS file system, read last known state.
+*   `BOOT` -> Initialize GPIOs, configure internal pull-up on GPIO 3, mount LittleFS file system, read last known state.
 *   `CONNECTING_WIFI` -> Turn on Wi-Fi, attempt connection to configured SSID. If connection fails after 30 seconds, boot local Captive Portal for Wi-Fi provisioning.
 *   `CONNECTING_MQTT` -> Establish TLS connection to MQTT Broker. Subscribe to commands topic.
-*   `MONITORING` -> Listen to interrupts on GPIO 2. Upon state change, apply debounce filter.
+*   `MONITORING` -> Listen to interrupts on GPIO 3. Upon state change, apply debounce filter.
 *   `TRANSMITTING` -> Send MQTT event payload. If successful, confirm delivery.
 *   `OFFLINE_BUFFERING` -> If Wi-Fi/MQTT is disconnected, write state change events with NTP timestamps to LittleFS internal flash.
 *   `ERROR_HANDLING` -> Log diagnostics. Re-trigger hardware watchdog if system stalls.
 
 ### 4.2 Edge Processing & Analytics
-*   **Software Debouncing:** Mechanical contactors can experience contact bounce for 10–20 ms upon closure or release. The firmware implements a 100 ms software debounce window. The state of GPIO 2 must remain constant for at least 100 ms to qualify as a valid grid status transition, preventing duplicate logging.
+*   **Software Debouncing:** Mechanical contactors can experience contact bounce for 10–20 ms upon closure or release. The firmware implements a 100 ms software debounce window. The state of GPIO 3 must remain constant for at least 100 ms to qualify as a valid grid status transition, preventing duplicate logging.
 *   **Time Synchronization:** The device synchronizes its internal RTC using Network Time Protocol (NTP) pools (`pool.ntp.org`) immediately upon Wi-Fi connection. Timestamps are written in UNIX Epoch format.
 *   **Local Storage/Buffering Strategy:** If the home router loses power or Internet connection, telemetry events are buffered in a FIFO queue within the LittleFS partition. The flash layout reserves 1MB for buffering, which is sufficient to record thousands of transition logs. Once connection is restored, the buffered events are pushed before real-time logging resumes.
 
@@ -173,7 +173,7 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 ### 6.1 Hardware-to-Cloud Security Matrix
 *   **Device Identity:** Unique client ID generated from the ESP32-C3 MAC address.
 *   **Encryption in Transit:** Mandatory TLS 1.3 encryption on Port 8883.
-*   **Isolation:** The high voltage (230V AC) is isolated entirely inside the mains panel by the IKA20-11 contactor. Only low voltage dry contact wires leave the panel to connect to the ESP32-C3 enclosure, keeping the user interface completely safe.
+*   **Isolation:** The high voltage (230V AC) is isolated entirely inside the mains panel by the IKA20-11 contactor. Only low voltage dry contact wires leave the panel to connect to the ESP32-C3 enclosure, keeping the user interface completely safe. *Note: Galvanic isolation carries significant risk of breakdown under surge conditions or component failure. Please consult the [Electrical Safety & Technical Risk Review](file:///home/bvarnai/workspace/lunagrid/docs/electrical_safety_review.md) for critical warning guidelines and circuit protection recommendations.*
 
 ### 6.2 Over-The-Air (OTA) Firmware Updates
 *   **Update Mechanism:** Standard ESP32 OTA update over HTTPS.

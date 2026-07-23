@@ -130,6 +130,7 @@ build_flags =
 ; Required libraries for Project Lunagrid features
 lib_deps =
     knolleary/PubSubClient @ ^2.8
+    bblanchon/ArduinoJson @ ^7.0.4
 ```
 
 ---

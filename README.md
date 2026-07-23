@@ -6,6 +6,22 @@ A low-cost, end-user IoT device designed to monitor grid power status and log th
 
 ---
 
+## ⚠️ DANGER: HIGH VOLTAGE WARNING & DISCLAIMER
+
+> [!CAUTION]
+> **RISK OF ELECTROCUTION, ELECTRICAL BURNS, AND FIRE**
+>
+> This project involves interfacing with **230V AC mains voltage**. Physical contact with mains electricity can cause severe injury, permanent disability, or **death**.
+>
+> * **Professional Installation Required:** All connections to mains lines (both the switched B-tariff grid line and the always-on A-tariff supply) and installation of physical components within an electrical panel board **must be performed by a qualified, licensed electrician** (e.g., *regisztrált villanyszerelő* in Hungary). Do not attempt to wire or install these components yourself.
+> * **Galvanic Isolation Failure Risk:** Although this design utilizes a contactor (Iskra IKA20-11) for galvanic isolation, isolation can fail due to surges, component defects, or thermal breakdown. Always verify isolation and treat all parts of the device as potentially live.
+> * **Overcurrent & Fire Hazard:** A short circuit or coil fault in the contactor can cause overheating or fire. A low-amperage, fast-acting in-line fuse (e.g., 500mA or 1A) **must** be wired in series with the contactor coil to protect the circuit.
+> * **No Liability:** The creators and maintainers of this project accept no responsibility or liability for any personal injury, loss of life, or property damage resulting from building, testing, or deploying this hardware.
+>
+> **For a detailed assessment of all electrical failure modes, wiring mitigations, and firmware bugs, refer to the [Electrical Safety & Technical Risk Review](file:///home/bvarnai/workspace/lunagrid/docs/electrical_safety_review.md).**
+
+---
+
 ## 1. Monorepo Directory Index
 
 This project is structured as a monorepo containing all software layers, physical models, configurations, and deployment tooling:
@@ -22,7 +38,8 @@ This project is structured as a monorepo containing all software layers, physica
 ## 2. Documentation Index
 
 Explore our design and guide files:
-- **[Project Plan & Specification](file:///c:/Users/bvarnai/workspace/lunagrid/docs/lunagrid_project_plan.md):** Complete specifications including the hardware contactor wiring and cloud architecture.
+- **[Electrical Safety & Risk Review](file:///home/bvarnai/workspace/lunagrid/docs/electrical_safety_review.md):** Critical engineering review of mains hazards, galvanic isolation failures, overcurrent protection, and code compliance.
+- **[Project Plan & Specification](file:///home/bvarnai/workspace/lunagrid/docs/lunagrid_project_plan.md):** Complete specifications including the hardware contactor wiring and cloud architecture.
 - **[Firmware Development Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_development.md):** Environment setups, WSL2 port authorization, and PlatformIO flashing commands.
 - **[Firmware Release & Rollout Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_release_guide.md):** Step-by-step firmware build, Nginx hosting, portal registration, and remote update commands.
 - **[EV Wake-up Integration Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/ev_wakeup_integration.md):** Configuration steps for local scripts or Home Assistant webhooks to wake sleeping EVs.
