@@ -2,7 +2,7 @@
 
 [![Lunagrid CI](https://github.com/bvarnai/lunagrid/actions/workflows/ci.yml/badge.svg)](https://github.com/bvarnai/lunagrid/actions)
 
-A low-cost, safety-first, end-user IoT device designed to monitor grid power status and log the active windows of the switched controlled tariff ("éjszakai áram") in Hungary.
+A low-cost, end-user IoT device designed to monitor grid power status and log the active windows of the switched controlled tariff ("éjszakai áram" or "B-tarifa") in Hungary.
 
 ---
 
