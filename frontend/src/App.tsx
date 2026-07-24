@@ -1201,7 +1201,20 @@ export default function App() {
             <div>
               <h3 style={{ fontSize: '1.1rem' }}>Selected Location Panel</h3>
             </div>
-            <select className="form-input" style={{ width: '220px', padding: '0.35rem' }} value={selectedLocationId} onChange={e => setSelectedLocationId(e.target.value)}>
+            <select 
+              className="form-input" 
+              style={{ 
+                width: 'auto', 
+                minWidth: '220px', 
+                maxWidth: '350px', 
+                padding: '0.35rem 2rem 0.35rem 0.75rem', 
+                textOverflow: 'ellipsis', 
+                overflow: 'hidden', 
+                whiteSpace: 'nowrap' 
+              }} 
+              value={selectedLocationId} 
+              onChange={e => setSelectedLocationId(e.target.value)}
+            >
               {locations.length === 0 ? (
                 <option value="">No Locations Configured</option>
               ) : (
