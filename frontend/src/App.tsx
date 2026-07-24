@@ -123,6 +123,12 @@ export default function App() {
   const [rangeHistory, setRangeHistory] = useState<Array<{ time: string; value: number }>>([]);
   const [isRangeLoading, setIsRangeLoading] = useState<boolean>(false);
 
+  // EV Charging Estimator States
+  const [chargingPower, setChargingPower] = useState<number>(11.0);
+  const [windowStartHour, setWindowStartHour] = useState<number>(20); // 8 PM
+  const [windowEndHour, setWindowEndHour] = useState<number>(6); // 6 AM
+  const [evConsumption, setEvConsumption] = useState<number>(18.0); // kWh / 100 km
+
   useEffect(() => {
     if (isMockMode) {
       setupMockFallbacks();
@@ -2340,6 +2346,257 @@ export default function App() {
                       <div className="legend-item">
                         <div className="legend-color" style={{ backgroundColor: '#374151' }} />
                         <span>No Telemetry Data</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()
+            )}
+          </div>
+
+          {/* EV Charging Estimator Card */}
+          <div className="card col-12" style={{ marginTop: '0rem' }}>
+            <h3>Off-Peak Charging Capacity Estimator</h3>
+            <p className="info-txt">Calculate the average energy and estimated driving range delivered to your EV during your daily home charging window, based on real historical B-tariff availability.</p>
+            
+            {locations.length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                Awaiting location and telemetry logs configuration.
+              </div>
+            ) : !isMockMode && !isBackendOnline ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                Connect to the backend to calculate historical off-peak capacity.
+              </div>
+            ) : (
+              (() => {
+                // Helper to calculate estimator values
+                const calculateEstimator = () => {
+                  const todayStr = (() => {
+                    const today = new Date();
+                    const year = today.getFullYear();
+                    const month = String(today.getMonth() + 1).padStart(2, '0');
+                    const day = String(today.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${day}`;
+                  })();
+                  
+                  const isFutureDay = (daysOffset: number) => {
+                    const today = new Date(todayStr + 'T00:00:00');
+                    const date = new Date(selectedHistoryDate + 'T00:00:00');
+                    date.setDate(date.getDate() + daysOffset);
+                    return date.getTime() > today.getTime();
+                  };
+
+                  const { yesterdayStrips, targetStrips, tomorrowStrips } = getStripsForRange();
+                  
+                  const validDaysStrips = [];
+                  if (!isFutureDay(-1)) validDaysStrips.push(yesterdayStrips);
+                  if (!isFutureDay(0)) validDaysStrips.push(targetStrips);
+                  if (!isFutureDay(1)) validDaysStrips.push(tomorrowStrips);
+
+                  if (validDaysStrips.length === 0) {
+                    return { totalHours: 0, activeHours: 0, energyDelivered: 0, rangeAddedKm: 0, rangeAddedMiles: 0 };
+                  }
+
+                  const windowHours = [];
+                  let h = windowStartHour;
+                  let totalHours = 0;
+                  while (h !== windowEndHour) {
+                    windowHours.push(h);
+                    h = (h + 1) % 24;
+                    totalHours++;
+                    if (totalHours > 24) break;
+                  }
+
+                  let totalActiveSum = 0;
+                  for (const hour of windowHours) {
+                    let activeSumForHour = 0;
+                    let daysWithData = 0;
+                    
+                    for (const dayStrip of validDaysStrips) {
+                      const block = dayStrip[hour];
+                      if (block && block.value !== null) {
+                        activeSumForHour += block.value;
+                        daysWithData++;
+                      }
+                    }
+                    
+                    if (daysWithData > 0) {
+                      totalActiveSum += activeSumForHour / daysWithData;
+                    }
+                  }
+
+                  const energyDelivered = totalActiveSum * chargingPower;
+                  const rangeAddedKm = (evConsumption > 0) ? (energyDelivered / evConsumption * 100) : 0;
+                  const rangeAddedMiles = rangeAddedKm * 0.621371;
+
+                  return {
+                    totalHours,
+                    activeHours: parseFloat(totalActiveSum.toFixed(1)),
+                    energyDelivered: parseFloat(energyDelivered.toFixed(1)),
+                    rangeAddedKm: Math.round(rangeAddedKm),
+                    rangeAddedMiles: Math.round(rangeAddedMiles)
+                  };
+                };
+
+                const { totalHours, activeHours, energyDelivered, rangeAddedKm, rangeAddedMiles } = calculateEstimator();
+                
+                return (
+                  <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1.5rem' }}>
+                    {/* Left: Input parameters */}
+                    <div style={{ flex: '1 1 350px', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                      
+                      {/* Charging Power Selection */}
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label style={{ fontWeight: '600' }}>Charger Power Rating (kW)</label>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <input 
+                            type="number" 
+                            className="form-input" 
+                            style={{ width: '120px', padding: '0.4rem 0.6rem' }} 
+                            step="0.05"
+                            min="0.5"
+                            max="50"
+                            value={chargingPower} 
+                            onChange={e => setChargingPower(parseFloat(e.target.value) || 0)} 
+                          />
+                          <span style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 600 }}>kW</span>
+                        </div>
+                        
+                        {/* Power Presets */}
+                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                          {[
+                            { label: '3.7 kW (16A 1P)', value: 3.7 },
+                            { label: '5.75 kW (25A 1P)', value: 5.75 },
+                            { label: '7.4 kW (32A 1P)', value: 7.4 },
+                            { label: '11 kW (16A 3P)', value: 11.0 },
+                            { label: '22 kW (32A 3P)', value: 22.0 }
+                          ].map(preset => (
+                            <button
+                              key={preset.value}
+                              type="button"
+                              className="btn-secondary"
+                              style={{ 
+                                padding: '0.25rem 0.5rem', 
+                                fontSize: '0.75rem', 
+                                borderRadius: '4px',
+                                border: chargingPower === preset.value ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+                                color: chargingPower === preset.value ? '#10b981' : '#f1f5f9',
+                                background: chargingPower === preset.value ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.02)'
+                              }}
+                              onClick={() => setChargingPower(preset.value)}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Daily Charging Time Window */}
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label style={{ fontWeight: '600' }}>Daily Charging Window</label>
+                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>Plug-in Time</span>
+                            <select 
+                              className="form-input" 
+                              style={{ width: '100%', padding: '0.35rem' }}
+                              value={windowStartHour} 
+                              onChange={e => setWindowStartHour(parseInt(e.target.value))}
+                            >
+                              {Array.from({ length: 24 }).map((_, h) => (
+                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00 {h >= 12 ? 'PM' : 'AM'}</option>
+                              ))}
+                            </select>
+                          </div>
+                          
+                          <span style={{ color: '#64748b', marginTop: '1.25rem' }}>to</span>
+                          
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>Unplug Time</span>
+                            <select 
+                              className="form-input" 
+                              style={{ width: '100%', padding: '0.35rem' }}
+                              value={windowEndHour} 
+                              onChange={e => setWindowEndHour(parseInt(e.target.value))}
+                            >
+                              {Array.from({ length: 24 }).map((_, h) => (
+                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00 {h >= 12 ? 'PM' : 'AM'}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* EV Consumption Parameter */}
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label style={{ fontWeight: '600' }}>EV Energy Consumption</label>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <input 
+                            type="number" 
+                            className="form-input" 
+                            style={{ width: '120px', padding: '0.4rem 0.6rem' }} 
+                            step="0.1"
+                            min="5"
+                            max="50"
+                            value={evConsumption} 
+                            onChange={e => setEvConsumption(parseFloat(e.target.value) || 0)} 
+                          />
+                          <span style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 600 }}>kWh / 100 km</span>
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Right: Results Analysis Output Box */}
+                    <div style={{ 
+                      flex: '1 1 300px', 
+                      background: 'rgba(255,255,255,0.01)', 
+                      border: '1px solid rgba(255,255,255,0.05)', 
+                      borderRadius: '0.75rem', 
+                      padding: '1.5rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: '1.25rem'
+                    }}>
+                      <h4 style={{ margin: 0, fontSize: '1rem', color: '#3b82f6', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.5rem' }}>
+                        Expected Charging Yield
+                      </h4>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                          <span style={{ color: '#94a3b8' }}>Total Session Window:</span>
+                          <span style={{ fontWeight: 600 }}>{totalHours} hours</span>
+                        </div>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                          <span style={{ color: '#94a3b8' }}>B-Tariff Active Duration:</span>
+                          <span style={{ fontWeight: 600, color: activeHours > 0 ? '#10b981' : '#64748b' }}>
+                            {activeHours} hours ({totalHours > 0 ? (activeHours / totalHours * 100).toFixed(0) : 0}%)
+                          </span>
+                        </div>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '0.85rem' }}>
+                          <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            ⚡ Energy Delivered:
+                          </span>
+                          <span style={{ fontWeight: 700, color: '#f59e0b' }}>
+                            {energyDelivered} kWh
+                          </span>
+                        </div>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.85rem' }}>
+                          <span style={{ color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 600 }}>
+                            🚗 Est. Range Added:
+                          </span>
+                          <span style={{ fontWeight: 800, color: '#10b981' }}>
+                            ~{rangeAddedKm} km <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 400 }}>(~{rangeAddedMiles} mi)</span>
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic', margin: 0 }}>
+                        *Averaged over the valid days in the loaded timeline explorer range.
                       </div>
                     </div>
                   </div>
