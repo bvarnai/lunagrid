@@ -124,9 +124,9 @@ export default function App() {
   const [isRangeLoading, setIsRangeLoading] = useState<boolean>(false);
 
   // EV Charging Estimator States (persisted in local storage)
-  const [chargingPower, setChargingPower] = useState<number>(() => {
+  const [chargingPower, setChargingPower] = useState<number | "">(() => {
     const saved = localStorage.getItem('lunagrid_charging_power');
-    return saved ? parseFloat(saved) : 11.0;
+    return (saved !== null && saved !== "") ? parseFloat(saved) : 11.0;
   });
   const [windowStartHour, setWindowStartHour] = useState<number>(() => {
     const saved = localStorage.getItem('lunagrid_window_start_hour');
@@ -136,9 +136,9 @@ export default function App() {
     const saved = localStorage.getItem('lunagrid_window_end_hour');
     return saved ? parseInt(saved) : 6; // 6 AM
   });
-  const [evConsumption, setEvConsumption] = useState<number>(() => {
+  const [evConsumption, setEvConsumption] = useState<number | "">(() => {
     const saved = localStorage.getItem('lunagrid_ev_consumption');
-    return saved ? parseFloat(saved) : 18.0; // kWh / 100 km
+    return (saved !== null && saved !== "") ? parseFloat(saved) : 18.0; // kWh / 100 km
   });
 
   useEffect(() => {
@@ -2444,8 +2444,11 @@ export default function App() {
                     }
                   }
 
-                  const energyDelivered = totalActiveSum * chargingPower;
-                  const rangeAddedKm = (evConsumption > 0) ? (energyDelivered / evConsumption * 100) : 0;
+                  const powerNum = chargingPower === "" ? 0 : chargingPower;
+                  const consumptionNum = evConsumption === "" ? 0 : evConsumption;
+
+                  const energyDelivered = totalActiveSum * powerNum;
+                  const rangeAddedKm = (consumptionNum > 0) ? (energyDelivered / consumptionNum * 100) : 0;
                   const rangeAddedMiles = rangeAddedKm * 0.621371;
 
                   return {
@@ -2476,7 +2479,10 @@ export default function App() {
                             min="0.5"
                             max="50"
                             value={chargingPower} 
-                            onChange={e => setChargingPower(parseFloat(e.target.value) || 0)} 
+                            onChange={e => {
+                              const val = e.target.value;
+                              setChargingPower(val === "" ? "" : parseFloat(val));
+                            }} 
                           />
                           <span style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 600 }}>kW</span>
                         </div>
@@ -2558,7 +2564,10 @@ export default function App() {
                             min="5"
                             max="50"
                             value={evConsumption} 
-                            onChange={e => setEvConsumption(parseFloat(e.target.value) || 0)} 
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEvConsumption(val === "" ? "" : parseFloat(val));
+                            }} 
                           />
                           <span style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 600 }}>kWh / 100 km</span>
                         </div>
