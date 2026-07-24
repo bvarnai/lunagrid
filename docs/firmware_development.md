@@ -96,7 +96,8 @@ On native Linux hosts (like Ubuntu), you must configure permission access to the
 1. **Install PlatformIO udev Rules:**
    PlatformIO provides a set of udev rules for various development boards, including ESP32 devices. Install them by running:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core/master/docs/udev/99-platformio-udev.rules | sudo tee /etc/udev/rules.d/99-platformio-udev.rules
+   sudo mkdir -p /etc/udev/rules.d
+   curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/system/99-platformio-udev.rules | sudo tee /etc/udev/rules.d/99-platformio-udev.rules
    ```
 
 2. **Reload udev Rules:**
