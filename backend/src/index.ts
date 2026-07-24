@@ -36,10 +36,10 @@ const getAppVersion = (): string => {
   try {
     const packageJsonPath = path.resolve(__dirname, '../package.json');
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
-    return packageJson.version || '1.0.0';
+    return packageJson.version || '1.0.1';
   } catch (error) {
-    console.warn('[VERSION] Could not dynamically load version from package.json, falling back to 1.0.0', error);
-    return '1.0.0';
+    console.warn('[VERSION] Could not dynamically load version from package.json, falling back to 1.0.1', error);
+    return '1.0.1';
   }
 };
 const appVersion = getAppVersion();
@@ -410,7 +410,7 @@ async function triggerEvWakeup(locationId: string, isManualTest: boolean = false
 
       const body = isManualTest
         ? `Test notification sent successfully for location: ${location.name}`
-        : `B-tariff (low-cost electricity) is now ON at location "${location.name}". Charging/wake-up signal has been sent to the EV.`;
+        : `B-tariff (low-cost electricity) is now ON at location "${location.name}". Please check your EV charging status.`;
 
       const response = await fetch(target, {
         method: 'POST',
