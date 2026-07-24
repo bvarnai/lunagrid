@@ -12,7 +12,7 @@ const char* password = "Mentor19";
 const char* mqtt_server = "mqtt.nas48.vbl.hu"; // Replace with your NAS local IP or DNS
 const int mqtt_port = 1883;
 
-const char* FIRMWARE_VERSION = "1.0.0";
+const char* FIRMWARE_VERSION = "1.0.1";
 
 // GPIO Pins
 #define SEN_GRID_B_CONTACTOR 3
@@ -46,7 +46,9 @@ bool ledState = false;
 
 // Get unique device ID based on MAC address
 void getUniqueDeviceId() {
-  uint8_t mac[6];
+  // Ensure the Wi-Fi stack is initialized in Station mode so the MAC address can be read correctly
+  WiFi.mode(WIFI_STA);
+  uint8_t mac[6] = {0};
   WiFi.macAddress(mac);
   snprintf(deviceId, sizeof(deviceId), "lunagrid_c3_%02x%02x%02x%02x%02x%02x", 
            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -269,6 +271,7 @@ void setup() {
   setupWifi();
   mqttClient.setServer(mqtt_server, mqtt_port);
   mqttClient.setCallback(mqttCallback);
+  mqttClient.setBufferSize(512); // Increase buffer size to handle larger telemetry payloads
   
   // Read initial contactor state (LOW = active B-tariff due to pull-up shorted to GND)
   debouncedGridActive = (digitalRead(SEN_GRID_B_CONTACTOR) == LOW);
