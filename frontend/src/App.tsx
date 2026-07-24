@@ -1528,9 +1528,6 @@ export default function App() {
                 <div className="metric-value">
                   {telemetry.deviceId ? `v${telemetry.firmwareVersion || '1.0.0'}` : 'N/A'}
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
-                  {telemetry.deviceId ? 'Running Lunagrid OS' : 'No device connected'}
-                </div>
               </div>
             </div>
           </div>
