@@ -123,11 +123,30 @@ export default function App() {
   const [rangeHistory, setRangeHistory] = useState<Array<{ time: string; value: number }>>([]);
   const [isRangeLoading, setIsRangeLoading] = useState<boolean>(false);
 
-  // EV Charging Estimator States
-  const [chargingPower, setChargingPower] = useState<number>(11.0);
-  const [windowStartHour, setWindowStartHour] = useState<number>(20); // 8 PM
-  const [windowEndHour, setWindowEndHour] = useState<number>(6); // 6 AM
-  const [evConsumption, setEvConsumption] = useState<number>(18.0); // kWh / 100 km
+  // EV Charging Estimator States (persisted in local storage)
+  const [chargingPower, setChargingPower] = useState<number>(() => {
+    const saved = localStorage.getItem('lunagrid_charging_power');
+    return saved ? parseFloat(saved) : 11.0;
+  });
+  const [windowStartHour, setWindowStartHour] = useState<number>(() => {
+    const saved = localStorage.getItem('lunagrid_window_start_hour');
+    return saved ? parseInt(saved) : 20; // 8 PM
+  });
+  const [windowEndHour, setWindowEndHour] = useState<number>(() => {
+    const saved = localStorage.getItem('lunagrid_window_end_hour');
+    return saved ? parseInt(saved) : 6; // 6 AM
+  });
+  const [evConsumption, setEvConsumption] = useState<number>(() => {
+    const saved = localStorage.getItem('lunagrid_ev_consumption');
+    return saved ? parseFloat(saved) : 18.0; // kWh / 100 km
+  });
+
+  useEffect(() => {
+    localStorage.setItem('lunagrid_charging_power', chargingPower.toString());
+    localStorage.setItem('lunagrid_window_start_hour', windowStartHour.toString());
+    localStorage.setItem('lunagrid_window_end_hour', windowEndHour.toString());
+    localStorage.setItem('lunagrid_ev_consumption', evConsumption.toString());
+  }, [chargingPower, windowStartHour, windowEndHour, evConsumption]);
 
   useEffect(() => {
     if (isMockMode) {
