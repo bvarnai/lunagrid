@@ -26,6 +26,7 @@ interface Telemetry {
   deviceId: string | null;
   friendlyName: string | null;
   firmwareVersion: string | null;
+  connectionStatus?: 'ONLINE' | 'OFFLINE' | 'DISCONNECTED';
 }
 
 interface FirmwareRelease {
@@ -98,12 +99,41 @@ export default function App() {
     timestamp: 0,
     deviceId: null,
     friendlyName: null,
-    firmwareVersion: null
+    firmwareVersion: null,
+    connectionStatus: 'DISCONNECTED'
   });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [compliance, setCompliance] = useState<ComplianceItem[]>([]);
-  const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
+  const [isMockMode, setIsMockMode] = useState<boolean>(() => {
+    return localStorage.getItem('lunagrid_mock_mode') === 'true';
+  });
+  const [tempForceMockMode, setTempForceMockMode] = useState<boolean>(isMockMode);
+  const [isBackendOnline, setIsBackendOnline] = useState<boolean>(false);
+  const isBackendConnected = !isMockMode && isBackendOnline;
   const [logs, setLogs] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (isMockMode) {
+      setupMockFallbacks();
+    } else {
+      setLocations([]);
+      setDevices([]);
+      setReleases([]);
+      setHistory([]);
+      setCompliance([]);
+      setTelemetry({
+        gridActive: false,
+        uptime: 0,
+        freeHeap: 0,
+        wifiRssi: 0,
+        timestamp: 0,
+        deviceId: null,
+        friendlyName: null,
+        firmwareVersion: null
+      });
+      fetchMetadata();
+    }
+  }, [isMockMode]);
 
   // Firmware Releases & Rollout States
   const [releases, setReleases] = useState<FirmwareRelease[]>([]);
@@ -145,6 +175,11 @@ export default function App() {
 
   // 1. Fetch Metadata (Locations, Devices, and Releases)
   const fetchMetadata = async () => {
+    if (isMockMode) {
+      setupMockFallbacks();
+      setIsBackendOnline(false);
+      return;
+    }
     try {
       const locRes = await fetch(`${apiBaseUrl}/api/locations`);
       const devRes = await fetch(`${apiBaseUrl}/api/devices`);
@@ -155,7 +190,7 @@ export default function App() {
         const devData = await devRes.json();
         setLocations(locData);
         setDevices(devData);
-        setIsBackendConnected(true);
+        setIsBackendOnline(true);
 
         if (relRes.ok) {
           const relData = await relRes.json();
@@ -170,11 +205,12 @@ export default function App() {
           }
           return current;
         });
+      } else {
+        setIsBackendOnline(false);
       }
     } catch (e) {
-      console.error('Failed to fetch backend metadata, falling back to mock mode:', e);
-      setIsBackendConnected(false);
-      setupMockFallbacks();
+      console.error('Failed to fetch backend metadata:', e);
+      setIsBackendOnline(false);
     }
   };
 
@@ -442,9 +478,9 @@ export default function App() {
     });
   };
 
-  // Run mock simulator only if backend is disconnected
+  // Run mock simulator only if mock mode is enabled
   useEffect(() => {
-    if (isBackendConnected) return;
+    if (!isMockMode) return;
     
     // Simulate real-time logs/telemetry locally
     const timer = setInterval(() => {
@@ -504,13 +540,14 @@ export default function App() {
           timestamp: Date.now(),
           deviceId: 'lunagrid_c3_mock_1',
           friendlyName: 'Mock Contactor',
-          firmwareVersion: currentVer
+          firmwareVersion: currentVer,
+          connectionStatus: 'ONLINE'
         };
       });
     }, 2000);
 
     return () => clearInterval(timer);
-  }, [isBackendConnected, selectedLocationId, showDiagnostics, rolloutTargetVersion, rolloutStatus]);
+  }, [isMockMode, selectedLocationId, showDiagnostics, rolloutTargetVersion, rolloutStatus]);
 
   // Handle periodic metadata fetching
   useEffect(() => {
@@ -521,7 +558,7 @@ export default function App() {
     poll();
     const interval = setInterval(poll, 4000);
     return () => clearInterval(interval);
-  }, [apiBaseUrl]);
+  }, [apiBaseUrl, isMockMode]);
 
   // Handle periodic telemetry polling
   useEffect(() => {
@@ -532,7 +569,7 @@ export default function App() {
     poll();
     const interval = setInterval(poll, 2000);
     return () => clearInterval(interval);
-  }, [selectedLocationId, isBackendConnected, showDiagnostics]);
+  }, [selectedLocationId, isBackendOnline, isMockMode, showDiagnostics]);
 
   // --- API Handlers ---
   
@@ -574,8 +611,14 @@ export default function App() {
     
     localStorage.setItem('lunagrid_show_diagnostics', tempShowDiagnostics ? 'true' : 'false');
     setShowDiagnostics(tempShowDiagnostics);
+
+    localStorage.setItem('lunagrid_mock_mode', tempForceMockMode ? 'true' : 'false');
+    setIsMockMode(tempForceMockMode);
     
-    setLogs(prev => [`[SYSTEM] Saved backend settings. Diagnostics: ${tempShowDiagnostics ? 'ENABLED' : 'DISABLED'}`, ...prev]);
+    setLogs(prev => [
+      `[SYSTEM] Saved backend settings. Mock Mode: ${tempForceMockMode ? 'ON' : 'OFF'} | Diagnostics: ${tempShowDiagnostics ? 'ENABLED' : 'DISABLED'}`,
+      ...prev
+    ]);
   };
 
   // Helper to generate a URL slug from display name
@@ -949,7 +992,8 @@ export default function App() {
 
         .badge { padding: 0.35rem 0.85rem; border-radius: 9999px; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
         .badge-online { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; }
-        .badge-offline { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: #f59e0b; }
+        .badge-offline { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .badge-mock { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); color: #3b82f6; }
         
         .grid-layout { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1.5rem; }
         .col-12 { grid-column: span 12; }
@@ -972,6 +1016,7 @@ export default function App() {
         }
         .active-state { background: radial-gradient(circle, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.03) 100%); border: 2px solid #10b981; color: #10b981; box-shadow: 0 0 25px rgba(16, 185, 129, 0.25); }
         .inactive-state { background: radial-gradient(circle, rgba(239, 68, 68, 0.2) 0%, rgba(239, 68, 68, 0.03) 100%); border: 2px solid #ef4444; color: #ef4444; box-shadow: 0 0 25px rgba(239, 68, 68, 0.15); }
+        .offline-state { background: radial-gradient(circle, rgba(148, 163, 184, 0.2) 0%, rgba(148, 163, 184, 0.03) 100%); border: 2px solid #94a3b8; color: #94a3b8; box-shadow: 0 0 25px rgba(148, 163, 184, 0.15); }
         
         /* 24h Availability Strip */
         .timeline-container { margin: 1.5rem 0; }
@@ -1028,9 +1073,19 @@ export default function App() {
           <h1>LUNAGRID SERVICE PORTAL</h1>
         </div>
         <div className="badge-backend-online">
-          <div className={`badge ${isBackendConnected ? 'badge-online' : 'badge-offline'}`}>
+          <div className={`badge ${
+            isMockMode 
+              ? 'badge-mock' 
+              : isBackendOnline 
+                ? 'badge-online' 
+                : 'badge-offline'
+          }`}>
             <span className="pulse" />
-            {isBackendConnected ? `Active Source: ${apiBaseUrl}` : 'Running Standalone Mock Mode'}
+            {isMockMode 
+              ? 'Manual Mock Mode' 
+              : isBackendOnline 
+                ? `Active Source: ${apiBaseUrl}` 
+                : 'Backend Connection Offline'}
           </div>
         </div>
       </header>
@@ -1097,6 +1152,50 @@ export default function App() {
       {/* Main Tab Render Switcher */}
       {activeTab === 'dashboard' && (
         <div className="grid-layout">
+          {/* Connection Error Banner */}
+          {!isMockMode && !isBackendOnline && (
+            <div className="card col-12" style={{
+              background: 'linear-gradient(to right, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05))',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: '#ef4444',
+              padding: '1.25rem',
+              borderRadius: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+              <div>
+                <strong style={{ display: 'block', fontSize: '1rem', fontWeight: 600 }}>Backend Connection Offline</strong>
+                <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                  Unable to establish connection to the backend server at <code>{apiBaseUrl}</code>. Data on the dashboard may be stale or unavailable. Please ensure the backend is running and the REST API URL in Settings is configured correctly.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Manual Mock Mode Active Banner */}
+          {isMockMode && (
+            <div className="card col-12" style={{
+              background: 'linear-gradient(to right, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.05))',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              color: '#3b82f6',
+              padding: '1.25rem',
+              borderRadius: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <span style={{ fontSize: '1.5rem' }}>ℹ️</span>
+              <div>
+                <strong style={{ display: 'block', fontSize: '1rem', fontWeight: 600 }}>Running in Force Mock Mode</strong>
+                <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                  The application is running in forced Standalone Mock Mode. Telemetry is being simulated. You can disable this in the Settings tab to connect to your real device backend.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Quick Select Location */}
           <div className="card col-12" style={{ padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
@@ -1125,6 +1224,20 @@ export default function App() {
                 <h3 style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>No Active Device Bound</h3>
                 <p style={{ color: '#64748b' }}>Please map a device to this location in the "Locations & Devices" tab.</p>
               </div>
+            ) : (telemetry.deviceId && (telemetry.connectionStatus === 'OFFLINE' || telemetry.connectionStatus === 'DISCONNECTED')) ? (
+              <>
+                <div className="status-circle offline-state">
+                  <svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-3.536 5 5 0 011.414-3.536m0 0l2.829 2.829m-5.656 2.829L3 21M5.636 5.636a9 9 0 0112.728 0M12 12h.01" />
+                  </svg>
+                </div>
+                <h2>DEVICE OFFLINE / DISCONNECTED</h2>
+                <p style={{ color: '#ef4444', fontWeight: 600, marginTop: '0.5rem' }}>
+                  {telemetry.connectionStatus === 'DISCONNECTED' 
+                    ? 'No heartbeat/telemetry has been received from this device.' 
+                    : `No telemetry received for over 6 minutes (last: ${new Date(telemetry.timestamp).toLocaleTimeString()}).`}
+                </p>
+              </>
             ) : (
               <>
                 <div className={`status-circle ${telemetry.gridActive ? 'active-state' : 'inactive-state'}`}>
@@ -1377,11 +1490,23 @@ export default function App() {
 
               <div className="metric-item">
                 <div className="metric-label">Last Ingest Time</div>
-                <div className="metric-value">
+                <div className="metric-value" style={{ 
+                  color: (telemetry.connectionStatus === 'ONLINE' || !telemetry.deviceId) ? '#e2e8f0' : '#ef4444' 
+                }}>
                   {telemetry.timestamp ? new Date(telemetry.timestamp).toLocaleTimeString() : 'Never'}
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
-                  {telemetry.timestamp ? 'Live updates active' : 'Awaiting heartbeat'}
+                <div style={{ 
+                  fontSize: '0.8rem', 
+                  fontWeight: telemetry.deviceId ? '600' : '400',
+                  color: !telemetry.deviceId ? '#64748b' : (telemetry.connectionStatus === 'ONLINE' ? '#10b981' : '#ef4444'),
+                  marginTop: '0.25rem' 
+                }}>
+                  {(() => {
+                    if (!telemetry.deviceId) return 'Awaiting heartbeat';
+                    if (telemetry.connectionStatus === 'ONLINE') return 'Device Online';
+                    if (telemetry.connectionStatus === 'OFFLINE') return 'Device Offline (Timeout)';
+                    return 'Device Disconnected';
+                  })()}
                 </div>
               </div>
 
@@ -1844,6 +1969,25 @@ export default function App() {
             <p className="info-txt">Define the endpoint paths used by the client dashboard interface to fetch registries and telemetry.</p>
             
             <form onSubmit={handleSaveSettings} style={{ marginTop: '1rem', maxWidth: '600px' }}>
+              <div className="form-group" style={{ marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '1.5rem' }}>
+                <label style={{ fontSize: '1rem', color: '#f1f5f9', marginBottom: '0.5rem' }}>Operating Mode</label>
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.65rem', marginTop: '0.5rem' }}>
+                  <input 
+                    type="checkbox" 
+                    id="forceMockMode" 
+                    checked={tempForceMockMode} 
+                    onChange={e => setTempForceMockMode(e.target.checked)} 
+                    style={{ width: '1.2rem', height: '1.2rem', cursor: 'pointer', margin: 0 }}
+                  />
+                  <label htmlFor="forceMockMode" style={{ cursor: 'pointer', fontSize: '0.95rem', userSelect: 'none', fontWeight: '500', color: '#e2e8f0' }}>
+                    Force Standalone Mock Mode (Simulates device telemetry)
+                  </label>
+                </div>
+                <span style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginTop: '0.25rem' }}>
+                  When enabled, the app will run entirely offline using mock devices and telemetry simulators. When disabled, it will connect directly to the REST API URL below.
+                </span>
+              </div>
+
               <div className="form-group">
                 <label>Backend REST API Base URL</label>
                 <input className="form-input" type="url" value={tempApiUrl} onChange={e => setTempApiUrl(e.target.value)} placeholder="http://localhost:3000" required />

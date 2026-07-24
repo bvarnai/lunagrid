@@ -172,7 +172,7 @@ app.get('/api/locations/:id/telemetry', async (req, res) => {
   try {
     const device = await getDeviceByLocationId(locationId);
     if (!device) {
-      return res.json({ gridActive: false, uptime: 0, freeHeap: 0, wifiRssi: 0, timestamp: 0, deviceId: null, firmwareVersion: null });
+      return res.json({ gridActive: false, uptime: 0, freeHeap: 0, wifiRssi: 0, timestamp: 0, deviceId: null, firmwareVersion: null, connectionStatus: 'DISCONNECTED' });
     }
     const cached = telemetryCache[device.id] || {
       gridActive: false,
@@ -182,11 +182,14 @@ app.get('/api/locations/:id/telemetry', async (req, res) => {
       timestamp: 0,
       firmwareVersion: '1.0.0'
     };
+    const isOnline = cached.timestamp > 0 && (Date.now() - cached.timestamp < 360000); // 6 minutes timeout threshold
+    const connectionStatus = cached.timestamp === 0 ? 'DISCONNECTED' : (isOnline ? 'ONLINE' : 'OFFLINE');
     res.json({
       ...cached,
       deviceId: device.id,
       friendlyName: device.friendly_name,
-      firmwareVersion: cached.firmwareVersion || '1.0.0'
+      firmwareVersion: cached.firmwareVersion || '1.0.0',
+      connectionStatus
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to retrieve telemetry' });
