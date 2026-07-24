@@ -256,6 +256,79 @@ app.get('/api/locations/:id/history', async (req, res) => {
   }
 });
 
+// Query InfluxDB for history around a specific date (-1 day and +1 day range)
+app.get('/api/locations/:id/history/range', async (req, res) => {
+  const locationId = req.params.id;
+  const dateParam = req.query.date as string;
+  if (!dateParam) {
+    return res.status(400).json({ error: 'Missing date parameter' });
+  }
+
+  try {
+    const device = await getDeviceByLocationId(locationId);
+    if (!device) {
+      return res.json([]);
+    }
+
+    // Parse chosen date and establish range: [Target - 1 day, Target + 2 days] (Z-aligned)
+    const targetDate = new Date(dateParam);
+    if (isNaN(targetDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date parameter format' });
+    }
+
+    const startDate = new Date(targetDate.getTime() - 24 * 60 * 60 * 1000);
+    const stopDate = new Date(targetDate.getTime() + 2 * 24 * 60 * 60 * 1000); // +2 days to cover target + 1 day completely (exclusive stop)
+
+    // Secure Flux Query targeting absolute timestamp range
+    const fluxQuery = `from(bucket: "lunagrid-telemetry")
+  |> range(start: ${startDate.toISOString()}, stop: ${stopDate.toISOString()})
+  |> filter(fn: (r) => r["_measurement"] == "mqtt_consumer" and r["device_id"] == "${device.id}")
+  |> filter(fn: (r) => r["_field"] == "metrics_grid_active")
+  |> group()
+  |> map(fn: (r) => ({ r with _value: if string(v: r._value) == "true" then 1.0 else 0.0 }))
+  |> aggregateWindow(every: 1h, fn: mean, createEmpty: false, timeSrc: "_start")
+  |> keep(columns: ["_time", "_value"])`;
+
+    const response = await fetch('http://influxdb:8086/api/v2/query?org=lunagrid-org', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Token lunagrid_secure_pass123',
+        'Content-Type': 'application/vnd.flux',
+        'Accept': 'application/csv'
+      },
+      body: fluxQuery
+    });
+
+    if (!response.ok) {
+      throw new Error(`InfluxDB query failed: ${response.statusText}`);
+    }
+
+    const csvText = await response.text();
+    const lines = csvText.split('\n');
+    const history: Array<{ time: string; value: number }> = [];
+
+    for (const line of lines) {
+      const parts = line.split(',');
+      if (parts.length >= 5 && parts[0] === '' && (parts[1] === '_result' || parts[1] === 'result')) {
+        if (parts[3] === '_time') continue; // Skip header
+        
+        const time = parts[3];
+        const value = parseFloat(parts[4]);
+        if (!isNaN(value)) {
+          history.push({ time, value });
+        }
+      }
+    }
+
+    // Sort by time ascending (earliest first) so we can map it to our timeline easily
+    history.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+    res.json(history);
+  } catch (error) {
+    console.error('[HISTORY RANGE] Error querying InfluxDB:', error);
+    res.status(500).json({ error: 'Failed to retrieve historical range data' });
+  }
+});
+
 // Query InfluxDB for last 7 days of B-tariff compliance metrics
 app.get('/api/locations/:id/compliance', async (req, res) => {
   const locationId = req.params.id;

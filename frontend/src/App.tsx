@@ -71,7 +71,7 @@ const getStableSuffix = (str: string): string => {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'management' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'management' | 'settings' | 'history'>('dashboard');
   
   // Settings - Read from LocalStorage or default
   const [apiBaseUrl, setApiBaseUrl] = useState<string>(() => {
@@ -111,6 +111,17 @@ export default function App() {
   const [isBackendOnline, setIsBackendOnline] = useState<boolean>(false);
   const isBackendConnected = !isMockMode && isBackendOnline;
   const [logs, setLogs] = useState<string[]>([]);
+
+  // New Range History States
+  const [selectedHistoryDate, setSelectedHistoryDate] = useState<string>(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
+  const [rangeHistory, setRangeHistory] = useState<Array<{ time: string; value: number }>>([]);
+  const [isRangeLoading, setIsRangeLoading] = useState<boolean>(false);
 
   useEffect(() => {
     if (isMockMode) {
@@ -212,6 +223,93 @@ export default function App() {
       console.error('Failed to fetch backend metadata:', e);
       setIsBackendOnline(false);
     }
+  };
+
+  // Generate mock history for selected target date range with Yesterday/Tomorrow context
+  const generateMockRangeHistory = (dateStr: string) => {
+    const target = new Date(dateStr + 'T00:00:00');
+    const start = new Date(target.getTime() - 24 * 60 * 60 * 1000);
+    const list = [];
+    for (let i = 0; i < 72; i++) {
+      const time = new Date(start.getTime() + i * 60 * 60 * 1000);
+      const hour = time.getHours();
+      
+      const str = dateStr + hour + i;
+      let hash = 0;
+      for (let c = 0; c < str.length; c++) {
+        hash = (hash << 5) - hash + str.charCodeAt(c);
+        hash |= 0;
+      }
+      const rand = Math.abs(hash) % 100 / 100;
+      
+      const isOffPeak = (hour >= 22 || hour < 6) || (hour >= 12 && hour < 14);
+      const value = (rand < 0.15) ? (isOffPeak ? 0.0 : 1.0) : (isOffPeak ? 1.0 : 0.0);
+      list.push({ time: time.toISOString(), value });
+    }
+    setRangeHistory(list);
+  };
+
+  // Fetch range history for the active location
+  const fetchRangeHistory = async () => {
+    if (!selectedLocationId) return;
+    if (isMockMode) {
+      generateMockRangeHistory(selectedHistoryDate);
+      return;
+    }
+    setIsRangeLoading(true);
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/locations/${selectedLocationId}/history/range?date=${selectedHistoryDate}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRangeHistory(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch range history:', e);
+    } finally {
+      setIsRangeLoading(false);
+    }
+  };
+
+  // Map 72h history points to Yesterday, Target, and Tomorrow 24h strips
+  const getStripsForRange = () => {
+    const targetStart = new Date(selectedHistoryDate + 'T00:00:00').getTime();
+    const yesterdayStart = targetStart - 24 * 60 * 60 * 1000;
+    const tomorrowStart = targetStart + 24 * 60 * 60 * 1000;
+
+    const yesterdayStrips = [];
+    const targetStrips = [];
+    const tomorrowStrips = [];
+
+    for (let h = 0; h < 24; h++) {
+      yesterdayStrips.push({ label: `${String(h).padStart(2, '0')}:00`, value: null as number | null });
+      targetStrips.push({ label: `${String(h).padStart(2, '0')}:00`, value: null as number | null });
+      tomorrowStrips.push({ label: `${String(h).padStart(2, '0')}:00`, value: null as number | null });
+    }
+
+    for (const point of rangeHistory) {
+      const timeMs = new Date(point.time).getTime();
+      
+      if (timeMs >= yesterdayStart && timeMs < targetStart) {
+        const hourIdx = Math.floor((timeMs - yesterdayStart) / (60 * 60 * 1000));
+        if (hourIdx >= 0 && hourIdx < 24) {
+          yesterdayStrips[hourIdx].value = point.value;
+        }
+      }
+      else if (timeMs >= targetStart && timeMs < tomorrowStart) {
+        const hourIdx = Math.floor((timeMs - targetStart) / (60 * 60 * 1000));
+        if (hourIdx >= 0 && hourIdx < 24) {
+          targetStrips[hourIdx].value = point.value;
+        }
+      }
+      else if (timeMs >= tomorrowStart && timeMs < tomorrowStart + 24 * 60 * 60 * 1000) {
+        const hourIdx = Math.floor((timeMs - tomorrowStart) / (60 * 60 * 1000));
+        if (hourIdx >= 0 && hourIdx < 24) {
+          tomorrowStrips[hourIdx].value = point.value;
+        }
+      }
+    }
+
+    return { yesterdayStrips, targetStrips, tomorrowStrips };
   };
 
   // 2. Fetch Real-time Telemetry, History, and Compliance metrics for the active location
@@ -570,6 +668,11 @@ export default function App() {
     const interval = setInterval(poll, 2000);
     return () => clearInterval(interval);
   }, [selectedLocationId, isBackendOnline, isMockMode, showDiagnostics]);
+
+  // Handle history range polling/updates
+  useEffect(() => {
+    fetchRangeHistory();
+  }, [selectedLocationId, selectedHistoryDate, isMockMode, isBackendOnline]);
 
   // --- API Handlers ---
   
@@ -1100,6 +1203,9 @@ export default function App() {
         </button>
         <button className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
           Source Settings
+        </button>
+        <button className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
+          Historical Logs
         </button>
       </nav>
 
@@ -2039,6 +2145,181 @@ export default function App() {
                 </div>
               )}
             </form>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div className="grid-layout">
+          {/* Header Bar */}
+          <div className="card col-12" style={{ padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h3 style={{ fontSize: '1.2rem' }}>Grid Archive Explorer</h3>
+              <p className="info-txt" style={{ margin: 0 }}>Select a target date to analyze B-tariff history with context.</p>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <select 
+                  className="form-input" 
+                  style={{ 
+                    width: 'auto', 
+                    minWidth: '220px', 
+                    maxWidth: '300px', 
+                    padding: '0.35rem 2rem 0.35rem 0.75rem',
+                    textOverflow: 'ellipsis',
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap'
+                  }} 
+                  value={selectedLocationId} 
+                  onChange={e => setSelectedLocationId(e.target.value)}
+                >
+                  {locations.length === 0 ? (
+                    <option value="">No Locations Configured</option>
+                  ) : (
+                    locations.map(l => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+              
+              <div className="form-group" style={{ margin: 0, flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+                <label htmlFor="historyDatePicker" style={{ margin: 0, fontSize: '0.9rem', color: '#94a3b8' }}>Target Date:</label>
+                <input 
+                  type="date" 
+                  id="historyDatePicker"
+                  className="form-input" 
+                  style={{ padding: '0.3rem 0.5rem', width: '160px' }} 
+                  value={selectedHistoryDate} 
+                  onChange={e => setSelectedHistoryDate(e.target.value)} 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Connection Warning Banner in History */}
+          {!isMockMode && !isBackendOnline && (
+            <div className="card col-12" style={{
+              background: 'linear-gradient(to right, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05))',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: '#ef4444',
+              padding: '1.25rem',
+              borderRadius: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+              <div>
+                <strong style={{ display: 'block', fontSize: '1rem', fontWeight: 600 }}>Backend Connection Offline</strong>
+                <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                  Unable to connect to the backend server to fetch history logs. Please check your network connection or configure the server base URL.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Main Timelines Card */}
+          <div className="card col-12">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h4>Historical Availability Timeline (3-Day Context Window)</h4>
+              {isRangeLoading && <span style={{ color: '#3b82f6', fontSize: '0.85rem', fontWeight: 600 }}>Loading archive data...</span>}
+            </div>
+
+            {locations.length === 0 ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
+                Please configure a location and bind a device first.
+              </div>
+            ) : !isMockMode && !isBackendOnline ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
+                No historical data available while backend is offline.
+              </div>
+            ) : (
+              (() => {
+                const { yesterdayStrips, targetStrips, tomorrowStrips } = getStripsForRange();
+                
+                const formatDateLabel = (daysOffset: number) => {
+                  const date = new Date(selectedHistoryDate + 'T00:00:00');
+                  date.setDate(date.getDate() + daysOffset);
+                  return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                };
+
+                const getActiveHours = (strip: Array<{ value: number | null }>) => {
+                  return strip.filter(s => s.value !== null && s.value > 0.5).length;
+                };
+
+                const renderDayStrip = (title: string, label: string, stripData: Array<{ label: string, value: number | null }>, highlight: boolean = false) => {
+                  const activeHours = getActiveHours(stripData);
+                  return (
+                    <div style={{ 
+                      margin: '1.5rem 0', 
+                      padding: '1rem', 
+                      borderRadius: '0.75rem', 
+                      background: highlight ? 'rgba(255,255,255,0.02)' : 'transparent',
+                      border: highlight ? '1px solid rgba(255,255,255,0.05)' : 'none'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.95rem', color: highlight ? '#10b981' : '#e2e8f0' }}>
+                          {title} <span style={{ color: '#64748b', fontWeight: 400, fontSize: '0.85rem', marginLeft: '0.5rem' }}>({label})</span>
+                        </span>
+                        <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                          Active: <strong style={{ color: activeHours > 0 ? '#10b981' : '#64748b' }}>{activeHours}h</strong> ({(activeHours / 24 * 100).toFixed(0)}%)
+                        </span>
+                      </div>
+                      
+                      <div className="strip" style={{ height: '1.5rem' }}>
+                        {stripData.map((block, idx) => {
+                          let bgColor = '#374151'; // no data
+                          let statusLabel = 'No Data';
+
+                          if (block.value !== null) {
+                            const percentage = Math.round(block.value * 100);
+                            statusLabel = `${percentage}% Active (Off-Peak)`;
+                            bgColor = block.value > 0.5 ? '#10b981' : '#ef4444';
+                          }
+
+                          return (
+                            <div 
+                              key={idx} 
+                              className="strip-block" 
+                              style={{ backgroundColor: bgColor }}
+                            >
+                              <div className="tooltip">
+                                <strong>{block.label}</strong>: {statusLabel}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                };
+
+                return (
+                  <div>
+                    {renderDayStrip('Yesterday', formatDateLabel(-1), yesterdayStrips)}
+                    {renderDayStrip('Selected Target Date', formatDateLabel(0), targetStrips, true)}
+                    {renderDayStrip('Tomorrow', formatDateLabel(1), tomorrowStrips)}
+                    
+                    <div className="timeline-legend" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem', marginTop: '1.5rem' }}>
+                      <div className="legend-item">
+                        <div className="legend-color" style={{ backgroundColor: '#10b981' }} />
+                        <span>Active (B-Tariff ON)</span>
+                      </div>
+                      <div className="legend-item">
+                        <div className="legend-color" style={{ backgroundColor: '#ef4444' }} />
+                        <span>Inactive (B-Tariff OFF)</span>
+                      </div>
+                      <div className="legend-item">
+                        <div className="legend-color" style={{ backgroundColor: '#374151' }} />
+                        <span>No Telemetry Data</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()
+            )}
           </div>
         </div>
       )}
