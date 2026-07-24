@@ -2249,7 +2249,22 @@ export default function App() {
                   return strip.filter(s => s.value !== null && s.value > 0.5).length;
                 };
 
-                const renderDayStrip = (title: string, label: string, stripData: Array<{ label: string, value: number | null }>, highlight: boolean = false) => {
+                const todayStr = (() => {
+                  const today = new Date();
+                  const year = today.getFullYear();
+                  const month = String(today.getMonth() + 1).padStart(2, '0');
+                  const day = String(today.getDate()).padStart(2, '0');
+                  return `${year}-${month}-${day}`;
+                })();
+
+                const isFutureDate = (daysOffset: number) => {
+                  const today = new Date(todayStr + 'T00:00:00');
+                  const date = new Date(selectedHistoryDate + 'T00:00:00');
+                  date.setDate(date.getDate() + daysOffset);
+                  return date.getTime() > today.getTime();
+                };
+
+                const renderDayStrip = (title: string, label: string, stripData: Array<{ label: string, value: number | null }>, highlight: boolean = false, disabled: boolean = false) => {
                   const activeHours = getActiveHours(stripData);
                   return (
                     <div style={{ 
@@ -2257,26 +2272,37 @@ export default function App() {
                       padding: '1rem', 
                       borderRadius: '0.75rem', 
                       background: highlight ? 'rgba(255,255,255,0.02)' : 'transparent',
-                      border: highlight ? '1px solid rgba(255,255,255,0.05)' : 'none'
+                      border: highlight ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                      opacity: disabled ? 0.35 : 1,
+                      pointerEvents: disabled ? 'none' : 'auto'
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                         <span style={{ fontWeight: 600, fontSize: '0.95rem', color: highlight ? '#10b981' : '#e2e8f0' }}>
                           {title} <span style={{ color: '#64748b', fontWeight: 400, fontSize: '0.85rem', marginLeft: '0.5rem' }}>({label})</span>
                         </span>
                         <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
-                          Active: <strong style={{ color: activeHours > 0 ? '#10b981' : '#64748b' }}>{activeHours}h</strong> ({(activeHours / 24 * 100).toFixed(0)}%)
+                          {disabled ? (
+                            <span style={{ color: '#64748b', fontStyle: 'italic' }}>Unavailable (Future Date)</span>
+                          ) : (
+                            <>Active: <strong style={{ color: activeHours > 0 ? '#10b981' : '#64748b' }}>{activeHours}h</strong> ({(activeHours / 24 * 100).toFixed(0)}%)</>
+                          )}
                         </span>
                       </div>
                       
                       <div className="strip" style={{ height: '1.5rem' }}>
                         {stripData.map((block, idx) => {
-                          let bgColor = '#374151'; // no data
-                          let statusLabel = 'No Data';
+                          let bgColor = '#1f2937'; // darker grey for future
+                          let statusLabel = 'Future Date - Telemetry Unavailable';
 
-                          if (block.value !== null) {
-                            const percentage = Math.round(block.value * 100);
-                            statusLabel = `${percentage}% Active (Off-Peak)`;
-                            bgColor = block.value > 0.5 ? '#10b981' : '#ef4444';
+                          if (!disabled) {
+                            bgColor = '#374151'; // standard no data
+                            statusLabel = 'No Data';
+
+                            if (block.value !== null) {
+                              const percentage = Math.round(block.value * 100);
+                              statusLabel = `${percentage}% Active (Off-Peak)`;
+                              bgColor = block.value > 0.5 ? '#10b981' : '#ef4444';
+                            }
                           }
 
                           return (
@@ -2298,9 +2324,9 @@ export default function App() {
 
                 return (
                   <div>
-                    {renderDayStrip('Yesterday', formatDateLabel(-1), yesterdayStrips)}
-                    {renderDayStrip('Selected Target Date', formatDateLabel(0), targetStrips, true)}
-                    {renderDayStrip('Tomorrow', formatDateLabel(1), tomorrowStrips)}
+                    {renderDayStrip('Day Before', formatDateLabel(-1), yesterdayStrips, false, isFutureDate(-1))}
+                    {renderDayStrip('Selected Target Date', formatDateLabel(0), targetStrips, true, isFutureDate(0))}
+                    {renderDayStrip('Day After', formatDateLabel(1), tomorrowStrips, false, isFutureDate(1))}
                     
                     <div className="timeline-legend" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem', marginTop: '1.5rem' }}>
                       <div className="legend-item">
