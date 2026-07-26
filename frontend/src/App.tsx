@@ -1244,7 +1244,7 @@ export default function App() {
       <header>
         <div className="logo">
           <div className="logo-icon" />
-          <h1>LUNAGRID SERVICE PORTAL</h1>
+          <h1>LUNAGRID CONSOLE</h1>
         </div>
         <div className="badge-backend-online">
           <div className={`badge ${
