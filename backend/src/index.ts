@@ -24,7 +24,13 @@ import {
   deleteRelease,
   getLocationById,
   updateLocationEvWakeup,
-  updateLocationEvAutomation
+  updateLocationEvAutomation,
+  getAllAutomations,
+  getAutomationsByLocationId,
+  getAutomationById,
+  createAutomation,
+  updateAutomation,
+  deleteAutomation
 } from './db.js'; // Note the .js extension for ES Module compatibility
 
 dotenv.config();
@@ -397,6 +403,164 @@ app.get('/api/locations/:id/compliance', async (req, res) => {
 
 // --- EV Wake-up Integration Trigger and Endpoints ---
 
+async function executeAutomation(auto: any, state: 'on' | 'off', location: { id: string; name: string }, isManualTest: boolean = false) {
+  const type = auto.type;
+  const target = auto.target;
+  const headersStr = auto.headers;
+
+  if (!target.trim()) {
+    const msg = `[EV AUTOMATION] No target configured for location ${location.name} (Automation ID: ${auto.id}).`;
+    console.warn(msg);
+    addLog(msg);
+    return { success: false, error: 'No target configured' };
+  }
+
+  const logPrefix = isManualTest ? '[EV AUTOMATION TEST]' : '[EV AUTOMATION]';
+  const startMsg = `${logPrefix} Triggering state "${state}" for location: ${location.name} (ID: ${auto.id}, Type: ${type})`;
+  console.log(startMsg);
+  addLog(startMsg);
+
+  if (type === 'webhook') {
+    let customHeaders: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+
+    if (headersStr) {
+      try {
+        const parsed = JSON.parse(headersStr);
+        customHeaders = { ...customHeaders, ...parsed };
+      } catch (e) {
+        const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON headers: ${e instanceof Error ? e.message : String(e)}`;
+        console.warn(warnMsg);
+        addLog(warnMsg);
+      }
+    }
+
+    const body = JSON.stringify({
+      event: isManualTest ? `TEST_${state.toUpperCase()}` : `B_TARIFF_${state.toUpperCase()}`,
+      status: state,
+      locationId: location.id,
+      locationName: location.name,
+      timestamp: Date.now()
+    });
+
+    const response = await fetch(target, {
+      method: 'POST',
+      headers: customHeaders,
+      body
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      const errMsg = `${logPrefix} Webhook failed with status ${response.status}: ${errText}`;
+      console.error(errMsg);
+      addLog(errMsg);
+      return { success: false, error: `Status ${response.status}`, details: errText };
+    }
+
+    const successMsg = `${logPrefix} Webhook dispatched successfully to ${target}.`;
+    console.log(successMsg);
+    addLog(successMsg);
+    return { success: true };
+
+  } else if (type === 'ntfy') {
+    let customHeaders: Record<string, string> = {
+      'Title': isManualTest ? `EV Charging Test: ${state.toUpperCase()}` : `EV Charging: B-tariff ${state.toUpperCase()} (${location.name})`,
+      'Priority': 'high',
+      'Tags': 'electric_plug,car'
+    };
+
+    if (headersStr) {
+      try {
+        const parsed = JSON.parse(headersStr);
+        customHeaders = { ...customHeaders, ...parsed };
+      } catch (e) {
+        const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON headers: ${e instanceof Error ? e.message : String(e)}`;
+        console.warn(warnMsg);
+        addLog(warnMsg);
+      }
+    }
+
+    const body = isManualTest
+      ? `Test notification sent successfully for location: ${location.name} (state: ${state})`
+      : `B-tariff (low-cost electricity) is now ${state.toUpperCase()} at location "${location.name}". Please check your EV charging status.`;
+
+    const response = await fetch(target, {
+      method: 'POST',
+      headers: customHeaders,
+      body
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      const errMsg = `${logPrefix} ntfy push failed with status ${response.status}: ${errText}`;
+      console.error(errMsg);
+      addLog(errMsg);
+      return { success: false, error: `Status ${response.status}`, details: errText };
+    }
+
+    const successMsg = `${logPrefix} ntfy push notification dispatched successfully to ${target}.`;
+    console.log(successMsg);
+    addLog(successMsg);
+    return { success: true };
+
+  } else if (type === 'script') {
+    return new Promise<{ success: boolean; error?: string }>((resolve) => {
+      const commandToRun = target.replace(/{state}/g, state);
+      const runEnv = {
+        ...process.env,
+        EV_STATE: state,
+        LUNAGRID_STATE: state
+      };
+
+      exec(commandToRun, { env: runEnv }, (err, stdout, stderr) => {
+        if (err) {
+          const errMsg = `${logPrefix} Script execution failed: ${err.message}`;
+          console.error(errMsg);
+          addLog(errMsg);
+          resolve({ success: false, error: err.message });
+        } else {
+          const successMsg = `${logPrefix} Script executed successfully. Output: ${stdout.trim()}`;
+          console.log(successMsg);
+          addLog(successMsg);
+          resolve({ success: true });
+        }
+      });
+    });
+
+  } else if (type === 'mqtt') {
+    if (mqttClient && mqttClient.connected) {
+      let payload = state === 'on' ? 'C' : 'A';
+      if (headersStr) {
+        try {
+          const parsed = JSON.parse(headersStr);
+          if (state === 'on' && parsed.on !== undefined) {
+            payload = String(parsed.on);
+          } else if (state === 'off' && parsed.off !== undefined) {
+            payload = String(parsed.off);
+          }
+        } catch (e) {
+          const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON payloads: ${e instanceof Error ? e.message : String(e)}`;
+          console.warn(warnMsg);
+          addLog(warnMsg);
+        }
+      }
+      mqttClient.publish(target, payload, { qos: 1, retain: true });
+      const successMsg = `${logPrefix} MQTT message '${payload}' published successfully to ${target}.`;
+      console.log(successMsg);
+      addLog(successMsg);
+      return { success: true };
+    } else {
+      const errMsg = `${logPrefix} MQTT client not connected.`;
+      console.error(errMsg);
+      addLog(errMsg);
+      return { success: false, error: 'MQTT client not connected' };
+    }
+  }
+
+  return { success: false, error: 'Unknown integration type' };
+}
+
 async function triggerEvAutomation(locationId: string, state: 'on' | 'off', isManualTest: boolean = false) {
   try {
     const location = await getLocationById(locationId);
@@ -405,175 +569,126 @@ async function triggerEvAutomation(locationId: string, state: 'on' | 'off', isMa
       return { success: false, error: 'Location not found' };
     }
 
-    const enabled = location.ev_automation_enabled !== undefined ? location.ev_automation_enabled : location.ev_wakeup_enabled;
-    const type = location.ev_automation_type || location.ev_wakeup_type || 'webhook';
-    const target = location.ev_automation_target || location.ev_wakeup_target || '';
-    const headersStr = location.ev_automation_headers || location.ev_wakeup_headers || '';
+    const automations = await getAutomationsByLocationId(locationId);
+    const activeAutomations = isManualTest ? automations : automations.filter(auto => auto.enabled === 1);
 
-    if (!isManualTest && (!enabled || enabled === 0)) {
-      return { success: false, error: 'Integration disabled' };
+    if (activeAutomations.length === 0) {
+      return { success: false, error: 'No active integrations configured' };
     }
 
-    if (!target.trim()) {
-      const msg = `[EV AUTOMATION] No target configured for location ${location.name}.`;
-      console.warn(msg);
-      addLog(msg);
-      return { success: false, error: 'No target configured' };
+    const results = await Promise.all(activeAutomations.map(async (auto) => {
+      try {
+        const res = await executeAutomation(auto, state, location, isManualTest);
+        return { id: auto.id, success: res.success, error: res.error, details: (res as any).details };
+      } catch (err) {
+        return { id: auto.id, success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }));
+
+    const failed = results.filter(r => !r.success);
+    if (failed.length > 0) {
+      return { success: false, error: `${failed.length} automations failed`, details: results };
     }
+    return { success: true };
 
-    const logPrefix = isManualTest ? '[EV AUTOMATION TEST]' : '[EV AUTOMATION]';
-    const startMsg = `${logPrefix} Triggering state "${state}" for location: ${location.name} (${type})`;
-    console.log(startMsg);
-    addLog(startMsg);
-
-    if (type === 'webhook') {
-      let customHeaders: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-
-      if (headersStr) {
-        try {
-          const parsed = JSON.parse(headersStr);
-          customHeaders = { ...customHeaders, ...parsed };
-        } catch (e) {
-          const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON headers: ${e instanceof Error ? e.message : String(e)}`;
-          console.warn(warnMsg);
-          addLog(warnMsg);
-        }
-      }
-
-      const body = JSON.stringify({
-        event: isManualTest ? `TEST_${state.toUpperCase()}` : `B_TARIFF_${state.toUpperCase()}`,
-        status: state,
-        locationId: location.id,
-        locationName: location.name,
-        timestamp: Date.now()
-      });
-
-      const response = await fetch(target, {
-        method: 'POST',
-        headers: customHeaders,
-        body
-      });
-
-      if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        const errMsg = `${logPrefix} Webhook failed with status ${response.status}: ${errText}`;
-        console.error(errMsg);
-        addLog(errMsg);
-        return { success: false, error: `Status ${response.status}`, details: errText };
-      }
-
-      const successMsg = `${logPrefix} Webhook dispatched successfully to ${target}.`;
-      console.log(successMsg);
-      addLog(successMsg);
-      return { success: true };
-
-    } else if (type === 'ntfy') {
-      let customHeaders: Record<string, string> = {
-        'Title': isManualTest ? `EV Charging Test: ${state.toUpperCase()}` : `EV Charging: B-tariff ${state.toUpperCase()} (${location.name})`,
-        'Priority': 'high',
-        'Tags': 'electric_plug,car'
-      };
-
-      if (headersStr) {
-        try {
-          const parsed = JSON.parse(headersStr);
-          customHeaders = { ...customHeaders, ...parsed };
-        } catch (e) {
-          const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON headers: ${e instanceof Error ? e.message : String(e)}`;
-          console.warn(warnMsg);
-          addLog(warnMsg);
-        }
-      }
-
-      const body = isManualTest
-        ? `Test notification sent successfully for location: ${location.name} (state: ${state})`
-        : `B-tariff (low-cost electricity) is now ${state.toUpperCase()} at location "${location.name}". Please check your EV charging status.`;
-
-      const response = await fetch(target, {
-        method: 'POST',
-        headers: customHeaders,
-        body
-      });
-
-      if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        const errMsg = `${logPrefix} ntfy push failed with status ${response.status}: ${errText}`;
-        console.error(errMsg);
-        addLog(errMsg);
-        return { success: false, error: `Status ${response.status}`, details: errText };
-      }
-
-      const successMsg = `${logPrefix} ntfy push notification dispatched successfully to ${target}.`;
-      console.log(successMsg);
-      addLog(successMsg);
-      return { success: true };
-
-    } else if (type === 'script') {
-      return new Promise<{ success: boolean; error?: string }>((resolve) => {
-        const commandToRun = target.replace(/{state}/g, state);
-        const runEnv = {
-          ...process.env,
-          EV_STATE: state,
-          LUNAGRID_STATE: state
-        };
-
-        exec(commandToRun, { env: runEnv }, (err, stdout, stderr) => {
-          if (err) {
-            const errMsg = `${logPrefix} Script execution failed: ${err.message}`;
-            console.error(errMsg);
-            addLog(errMsg);
-            resolve({ success: false, error: err.message });
-          } else {
-            const successMsg = `${logPrefix} Script executed successfully. Output: ${stdout.trim()}`;
-            console.log(successMsg);
-            addLog(successMsg);
-            resolve({ success: true });
-          }
-        });
-      });
-
-    } else if (type === 'mqtt') {
-      if (mqttClient && mqttClient.connected) {
-        let payload = state === 'on' ? 'C' : 'A';
-        if (headersStr) {
-          try {
-            const parsed = JSON.parse(headersStr);
-            if (state === 'on' && parsed.on !== undefined) {
-              payload = String(parsed.on);
-            } else if (state === 'off' && parsed.off !== undefined) {
-              payload = String(parsed.off);
-            }
-          } catch (e) {
-            const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON payloads: ${e instanceof Error ? e.message : String(e)}`;
-            console.warn(warnMsg);
-            addLog(warnMsg);
-          }
-        }
-        mqttClient.publish(target, payload, { qos: 1, retain: true });
-        const successMsg = `${logPrefix} MQTT message '${payload}' published successfully to ${target}.`;
-        console.log(successMsg);
-        addLog(successMsg);
-        return { success: true };
-      } else {
-        const errMsg = `${logPrefix} MQTT client not connected.`;
-        console.error(errMsg);
-        addLog(errMsg);
-        return { success: false, error: 'MQTT client not connected' };
-      }
-    }
-
-    return { success: false, error: 'Unknown integration type' };
   } catch (error) {
-    const errMsg = `[EV AUTOMATION] Unexpected error: ${error instanceof Error ? error.message : String(error)}`;
+    const errMsg = `[EV AUTOMATION] Failed to trigger automation: ${error instanceof Error ? error.message : String(error)}`;
     console.error(errMsg);
     addLog(errMsg);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-// Update EV charging automation settings for a location
+// --- Automations API ---
+
+// Get all automations
+app.get('/api/automations', async (req, res) => {
+  try {
+    const automations = await getAllAutomations();
+    res.json(automations);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to retrieve automations' });
+  }
+});
+
+// Get all automations for a location
+app.get('/api/locations/:id/automations', async (req, res) => {
+  const locationId = req.params.id;
+  try {
+    const automations = await getAutomationsByLocationId(locationId);
+    res.json(automations);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to retrieve automations' });
+  }
+});
+
+// Create new automation for a location
+app.post('/api/locations/:id/automations', async (req, res) => {
+  const locationId = req.params.id;
+  const { enabled, type, target, headers } = req.body;
+  if (!type || target === undefined) {
+    return res.status(400).json({ error: 'type and target are required' });
+  }
+  try {
+    const id = await createAutomation(locationId, enabled !== false, type, target, headers || '');
+    res.status(201).json({ id, status: 'success', message: 'Automation created' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create automation' });
+  }
+});
+
+// Update an automation
+app.put('/api/automations/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { enabled, type, target, headers } = req.body;
+  if (!type || target === undefined) {
+    return res.status(400).json({ error: 'type and target are required' });
+  }
+  try {
+    await updateAutomation(id, enabled !== false, type, target, headers || '');
+    res.json({ status: 'success', message: 'Automation updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update automation' });
+  }
+});
+
+// Delete an automation
+app.delete('/api/automations/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  try {
+    await deleteAutomation(id);
+    res.json({ status: 'success', message: 'Automation deleted' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete automation' });
+  }
+});
+
+// Trigger a manual test for a specific automation
+app.post('/api/automations/:id/test', async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { state } = req.body;
+  const targetState = (state === 'off') ? 'off' : 'on';
+  try {
+    const auto = await getAutomationById(id);
+    if (!auto) {
+      return res.status(404).json({ error: 'Automation not found' });
+    }
+    const location = await getLocationById(auto.location_id);
+    if (!location) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+    const result = await executeAutomation(auto, targetState, location, true);
+    if (result.success) {
+      res.json({ status: 'success', message: `Automation test (${targetState.toUpperCase()}) triggered successfully` });
+    } else {
+      res.status(500).json({ error: result.error, details: 'details' in result ? (result as any).details : undefined });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// Keep legacy endpoints as fallback wrappers for backward compatibility
 app.post('/api/locations/:id/automation', async (req, res) => {
   const locationId = req.params.id;
   const { enabled, type, target, headers } = req.body;
@@ -583,8 +698,13 @@ app.post('/api/locations/:id/automation', async (req, res) => {
   }
 
   try {
-    await updateLocationEvAutomation(locationId, enabled, type, target, headers || '');
-    res.json({ status: 'success', message: 'EV charging automation settings updated successfully' });
+    const existing = await getAutomationsByLocationId(locationId);
+    if (existing.length > 0 && existing[0].id !== undefined) {
+      await updateAutomation(existing[0].id, enabled, type, target, headers || '');
+    } else {
+      await createAutomation(locationId, enabled, type, target, headers || '');
+    }
+    res.json({ status: 'success', message: 'EV charging automation settings updated successfully (compat)' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update EV charging automation settings' });
   }
@@ -607,7 +727,6 @@ app.post('/api/locations/:id/automation/test', async (req, res) => {
   }
 });
 
-// Keep legacy endpoints as fallback wrappers for backward compatibility
 app.post('/api/locations/:id/wakeup', async (req, res) => {
   const locationId = req.params.id;
   const { enabled, type, target, headers } = req.body;
@@ -617,8 +736,13 @@ app.post('/api/locations/:id/wakeup', async (req, res) => {
   }
 
   try {
-    await updateLocationEvAutomation(locationId, enabled, type, target, headers || '');
-    res.json({ status: 'success', message: 'EV settings updated successfully' });
+    const existing = await getAutomationsByLocationId(locationId);
+    if (existing.length > 0 && existing[0].id !== undefined) {
+      await updateAutomation(existing[0].id, enabled, type, target, headers || '');
+    } else {
+      await createAutomation(locationId, enabled, type, target, headers || '');
+    }
+    res.json({ status: 'success', message: 'EV settings updated successfully (compat)' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update EV settings' });
   }

@@ -30,6 +30,15 @@ export interface Device {
   registered_at?: string;
 }
 
+export interface Automation {
+  id?: number;
+  location_id: string;
+  enabled: number;
+  type: string;
+  target: string;
+  headers: string;
+}
+
 // Wrap sqlite3 queries in Promises
 export const runQuery = (sql: string, params: any[] = []): Promise<void> => {
   return new Promise((resolve, reject) => {
@@ -126,6 +135,42 @@ export const initDb = async (): Promise<void> => {
     }
   } catch (err) {
     console.error('[DATABASE] Migration error migrating wakeup columns to automation columns:', err);
+  }
+
+  // Create location_automations table for multiple automations
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS location_automations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      location_id TEXT NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+      enabled INTEGER DEFAULT 1,
+      type TEXT DEFAULT 'webhook',
+      target TEXT DEFAULT '',
+      headers TEXT DEFAULT ''
+    )
+  `);
+
+  // Migrate legacy single-automation fields to the new table
+  try {
+    const locations = await allQuery<Location>('SELECT * FROM locations');
+    for (const loc of locations) {
+      const isEnabled = loc.ev_automation_enabled !== undefined ? loc.ev_automation_enabled : loc.ev_wakeup_enabled;
+      const type = loc.ev_automation_type || loc.ev_wakeup_type || 'webhook';
+      const target = loc.ev_automation_target || loc.ev_wakeup_target || '';
+      const headers = loc.ev_automation_headers || loc.ev_wakeup_headers || '';
+
+      if (target.trim() || isEnabled) {
+        const existing = await allQuery('SELECT * FROM location_automations WHERE location_id = ?', [loc.id]);
+        if (existing.length === 0) {
+          console.log(`[DATABASE] Migrating legacy automation for location: ${loc.id} to location_automations table`);
+          await runQuery(
+            'INSERT INTO location_automations (location_id, enabled, type, target, headers) VALUES (?, ?, ?, ?, ?)',
+            [loc.id, isEnabled ? 1 : 0, type, target, headers]
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[DATABASE] Migration error to location_automations table:', err);
   }
 
   // Seed default locations if empty
@@ -290,4 +335,49 @@ export const createRelease = async (version: string, url: string, description: s
 
 export const deleteRelease = async (version: string): Promise<void> => {
   await runQuery('DELETE FROM firmware_releases WHERE version = ?', [version]);
+};
+
+// Automations CRUD
+export const getAllAutomations = (): Promise<Automation[]> => {
+  return allQuery<Automation>('SELECT * FROM location_automations');
+};
+
+export const getAutomationsByLocationId = (locationId: string): Promise<Automation[]> => {
+  return allQuery<Automation>('SELECT * FROM location_automations WHERE location_id = ?', [locationId]);
+};
+
+export const getAutomationById = (id: number): Promise<Automation | undefined> => {
+  return getQuery<Automation>('SELECT * FROM location_automations WHERE id = ?', [id]);
+};
+
+export const createAutomation = async (
+  locationId: string,
+  enabled: boolean,
+  type: string,
+  target: string,
+  headers: string
+): Promise<number> => {
+  await runQuery(
+    'INSERT INTO location_automations (location_id, enabled, type, target, headers) VALUES (?, ?, ?, ?, ?)',
+    [locationId, enabled ? 1 : 0, type, target, headers]
+  );
+  const row = await getQuery<{ id: number }>('SELECT last_insert_rowid() as id');
+  return row ? row.id : 0;
+};
+
+export const updateAutomation = async (
+  id: number,
+  enabled: boolean,
+  type: string,
+  target: string,
+  headers: string
+): Promise<void> => {
+  await runQuery(
+    'UPDATE location_automations SET enabled = ?, type = ?, target = ?, headers = ? WHERE id = ?',
+    [enabled ? 1 : 0, type, target, headers, id]
+  );
+};
+
+export const deleteAutomation = async (id: number): Promise<void> => {
+  await runQuery('DELETE FROM location_automations WHERE id = ?', [id]);
 };

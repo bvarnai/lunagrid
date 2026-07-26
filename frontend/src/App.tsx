@@ -14,6 +14,15 @@ interface Location {
   ev_automation_headers?: string;
 }
 
+interface Automation {
+  id?: number;
+  location_id: string;
+  enabled: number;
+  type: string;
+  target: string;
+  headers: string;
+}
+
 interface Device {
   id: string;
   location_id: string | null;
@@ -90,6 +99,7 @@ export default function App() {
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [automations, setAutomations] = useState<Automation[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<string>(() => {
     return localStorage.getItem('lunagrid_selected_location_id') || '';
   });
@@ -228,6 +238,7 @@ export default function App() {
       const locRes = await fetch(`${apiBaseUrl}/api/locations`);
       const devRes = await fetch(`${apiBaseUrl}/api/devices`);
       const relRes = await fetch(`${apiBaseUrl}/api/releases`);
+      const autoRes = await fetch(`${apiBaseUrl}/api/automations`);
       
       if (locRes.ok && devRes.ok) {
         const locData = await locRes.json();
@@ -235,6 +246,11 @@ export default function App() {
         setLocations(locData);
         setDevices(devData);
         setIsBackendOnline(true);
+
+        if (autoRes.ok) {
+          const autoData = await autoRes.json();
+          setAutomations(autoData);
+        }
 
         if (relRes.ok) {
           const relData = await relRes.json();
@@ -598,6 +614,13 @@ export default function App() {
       });
     }
     setCompliance(mockCompliance);
+
+    // Seed mock automations
+    const mockAutomations = [
+      { id: 1, location_id: 'budapest-home-1', enabled: 1, type: 'webhook', target: 'http://192.168.1.50:8123/api/webhook/ev_charging', headers: '{"Authorization": "Bearer token123"}' },
+      { id: 2, location_id: 'budapest-home-1', enabled: 0, type: 'mqtt', target: 'evcc/charger/status', headers: '{"on": "C", "off": "A"}' }
+    ];
+    setAutomations(mockAutomations);
 
     // Auto-select first location if none selected or the selected one is invalid (using functional updater to avoid stale closures)
     setSelectedLocationId(current => {
@@ -996,91 +1019,123 @@ export default function App() {
     }
   };
 
-  const handleUpdateAutomationSettings = async (
-    locationId: string,
-    settings: { enabled: boolean; type: string; target: string; headers: string }
-  ) => {
-    setLocations(prev =>
-      prev.map(l =>
-        l.id === locationId
-          ? {
-              ...l,
-              ev_wakeup_enabled: settings.enabled ? 1 : 0,
-              ev_wakeup_type: settings.type,
-              ev_wakeup_target: settings.target,
-              ev_wakeup_headers: settings.headers,
-              ev_automation_enabled: settings.enabled ? 1 : 0,
-              ev_automation_type: settings.type,
-              ev_automation_target: settings.target,
-              ev_automation_headers: settings.headers
-            }
-          : l
-      )
-    );
+  const handleCreateAutomation = async (locationId: string) => {
+    const defaultAuto = {
+      enabled: 1,
+      type: 'webhook',
+      target: 'http://',
+      headers: ''
+    };
 
     if (isBackendConnected) {
       try {
-        const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/automation`, {
+        const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/automations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(settings)
+          body: JSON.stringify(defaultAuto)
+        });
+        if (res.ok) {
+          fetchMetadata();
+          setLogs(prev => [`[SYSTEM] Created new automation for location ${locationId}`, ...prev]);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      const mockId = Date.now();
+      setAutomations(prev => [...prev, { id: mockId, location_id: locationId, ...defaultAuto }]);
+    }
+  };
+
+  const handleUpdateAutomation = async (id: number, updatedFields: Partial<Automation>) => {
+    setAutomations(prev =>
+      prev.map(auto => (auto.id === id ? { ...auto, ...updatedFields } : auto))
+    );
+
+    const autoToUpdate = automations.find(a => a.id === id);
+    if (!autoToUpdate) return;
+    const finalAuto = { ...autoToUpdate, ...updatedFields };
+
+    if (isBackendConnected) {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/automations/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(finalAuto)
         });
         if (!res.ok) {
-          const errData = await res.json();
-          console.error('Failed to save EV charging automation settings:', errData.error);
+          console.error('Failed to update automation');
         } else {
-          setLogs(prev => [`[SYSTEM] Updated EV charging automation settings for location: ${locationId}`, ...prev]);
+          setLogs(prev => [`[SYSTEM] Updated automation ${id}`, ...prev]);
           setTempAutomationTarget(prev => {
             const copy = { ...prev };
-            delete copy[locationId];
+            delete copy[`auto_${id}`];
             return copy;
           });
           setTempAutomationHeaders(prev => {
             const copy = { ...prev };
-            delete copy[locationId];
+            delete copy[`auto_${id}`];
             return copy;
           });
         }
       } catch (err) {
-        console.error('Failed to connect to backend to save EV charging automation settings:', err);
+        console.error(err);
       }
     } else {
-      setLogs(prev => [`[MOCK] Updated EV charging automation settings for location: ${locationId} (Local Only)`, ...prev]);
+      setLogs(prev => [`[MOCK] Updated automation ${id} locally`, ...prev]);
       setTempAutomationTarget(prev => {
         const copy = { ...prev };
-        delete copy[locationId];
+        delete copy[`auto_${id}`];
         return copy;
       });
       setTempAutomationHeaders(prev => {
         const copy = { ...prev };
-        delete copy[locationId];
+        delete copy[`auto_${id}`];
         return copy;
       });
     }
   };
 
-  const handleTestAutomation = async (locationId: string, state: 'on' | 'off') => {
+  const handleDeleteAutomation = async (id: number) => {
+    if (confirm('Are you sure you want to delete this integration?')) {
+      if (isBackendConnected) {
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/automations/${id}`, {
+            method: 'DELETE'
+          });
+          if (res.ok) {
+            fetchMetadata();
+            setLogs(prev => [`[SYSTEM] Deleted automation ${id}`, ...prev]);
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      } else {
+        setAutomations(prev => prev.filter(auto => auto.id !== id));
+      }
+    }
+  };
+
+  const handleTestSingleAutomation = async (id: number, state: 'on' | 'off') => {
     if (!isBackendConnected) {
-      alert(`[MOCK] EV Charging automation test (${state.toUpperCase()}) triggered (Standalone Mock Mode - check console logs)`);
-      setLogs(prev => [`[MOCK EV AUTOMATION TEST] Triggered locally for ${locationId} (state: ${state})`, ...prev]);
+      alert(`[MOCK] Single Automation test (${state.toUpperCase()}) triggered locally.`);
       return;
     }
-
     try {
-      const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/automation/test`, {
+      const res = await fetch(`${apiBaseUrl}/api/automations/${id}/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state })
       });
       if (res.ok) {
-        alert(`EV charging automation test (${state.toUpperCase()}) triggered successfully! Check the system logs for status.`);
+        alert(`Automation integration test (${state.toUpperCase()}) triggered successfully! Check the system logs for status.`);
       } else {
         const errData = await res.json();
         alert(`Test trigger failed: ${errData.error || 'Unknown error'}`);
       }
     } catch (err) {
       console.error(err);
-      alert(`Failed to connect to backend to trigger charging automation test (${state.toUpperCase()}).`);
+      alert(`Failed to trigger automation test.`);
     }
   };
 
@@ -1835,146 +1890,171 @@ export default function App() {
                         </select>
                       </div>
 
-                      {/* EV Charging Automation Control */}
-                      {(() => {
-                        const autoEnabled = loc.ev_automation_enabled !== undefined ? loc.ev_automation_enabled === 1 : loc.ev_wakeup_enabled === 1;
-                        const autoType = loc.ev_automation_type || loc.ev_wakeup_type || 'webhook';
-                        const autoTarget = loc.ev_automation_target || loc.ev_wakeup_target || '';
-                        const autoHeaders = loc.ev_automation_headers || loc.ev_wakeup_headers || '';
+                      {/* EV Charging Automations (Multiple) */}
+                      <div className="ev-automation-control" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#3b82f6' }}>EV Charging Integrations</span>
+                          <button 
+                            className="btn-secondary"
+                            style={{ padding: '0.15rem 0.45rem', fontSize: '0.75rem', borderColor: '#10b981', color: '#10b981', background: 'rgba(16,185,129,0.05)' }}
+                            onClick={() => handleCreateAutomation(loc.id)}
+                          >
+                            + Add Integration
+                          </button>
+                        </div>
 
-                        return (
-                          <div className="ev-automation-control" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                              <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>EV Charging Automation</span>
-                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
-                                <input 
-                                  type="checkbox" 
-                                  checked={autoEnabled}
-                                  onChange={e => handleUpdateAutomationSettings(loc.id, {
-                                    enabled: e.target.checked,
-                                    type: autoType,
-                                    target: tempAutomationTarget[loc.id] !== undefined ? tempAutomationTarget[loc.id] : autoTarget,
-                                    headers: tempAutomationHeaders[loc.id] !== undefined ? tempAutomationHeaders[loc.id] : autoHeaders
-                                  })}
-                                  style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
-                                />
-                                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Enabled</span>
-                              </label>
-                            </div>
-
-                            {autoEnabled && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                <div>
-                                  <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Automation Type:</label>
-                                  <select
-                                    className="form-input"
-                                    style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem' }}
-                                    value={autoType}
-                                    onChange={e => handleUpdateAutomationSettings(loc.id, {
-                                      enabled: true,
-                                      type: e.target.value,
-                                      target: tempAutomationTarget[loc.id] !== undefined ? tempAutomationTarget[loc.id] : autoTarget,
-                                      headers: tempAutomationHeaders[loc.id] !== undefined ? tempAutomationHeaders[loc.id] : autoHeaders
-                                    })}
-                                  >
-                                    <option value="webhook">Webhook (HTTP POST on both transitions)</option>
-                                    <option value="ntfy">ntfy Notification Service (ON/OFF notification)</option>
-                                    <option value="script">Local Shell Script / CLI (run on both transitions)</option>
-                                    <option value="mqtt">MQTT Message Broker (publishes state payload)</option>
-                                  </select>
-                                </div>
-
-                                <div>
-                                  <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                    {autoType === 'script'
-                                      ? 'Local Script / CLI Command (use {state} placeholder):'
-                                      : autoType === 'ntfy'
-                                      ? 'ntfy Topic URL:'
-                                      : autoType === 'mqtt'
-                                      ? 'MQTT Status Topic:'
-                                      : 'Webhook Endpoint URL:'}
-                                  </label>
-                                  <input
-                                    type="text"
-                                    className="form-input"
-                                    style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem' }}
-                                    placeholder={
-                                      autoType === 'script'
-                                        ? 'e.g. tools/handle_ev.sh {state}'
-                                        : autoType === 'ntfy'
-                                        ? `e.g. https://ntfy.sh/lunagrid-${loc.id || 'automation'}-${getStableSuffix(loc.id || '')}`
-                                        : autoType === 'mqtt'
-                                        ? 'e.g. evcc/charger/status'
-                                        : 'e.g. http://192.168.1.50:8123/api/webhook/...'
-                                    }
-                                    value={tempAutomationTarget[loc.id] !== undefined ? tempAutomationTarget[loc.id] : autoTarget}
-                                    onChange={e => setTempAutomationTarget(prev => ({ ...prev, [loc.id]: e.target.value }))}
-                                    onBlur={() => handleUpdateAutomationSettings(loc.id, {
-                                      enabled: true,
-                                      type: autoType,
-                                      target: tempAutomationTarget[loc.id] !== undefined ? tempAutomationTarget[loc.id] : autoTarget,
-                                      headers: tempAutomationHeaders[loc.id] !== undefined ? tempAutomationHeaders[loc.id] : autoHeaders
-                                    })}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter') {
-                                        e.currentTarget.blur();
-                                      }
-                                    }}
-                                  />
-                                </div>
-
-                                {(autoType === 'webhook' || autoType === 'ntfy' || autoType === 'mqtt') && (
-                                  <div>
-                                    <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                      {autoType === 'ntfy'
-                                        ? 'Custom HTTP Headers (JSON, optional):'
-                                        : autoType === 'mqtt'
-                                        ? 'Custom MQTT Payloads (JSON, optional - e.g. {"on": "C", "off": "A"}):'
-                                        : 'Custom HTTP Headers (JSON, optional):'}
-                                    </label>
-                                    <textarea
-                                      className="form-input"
-                                      style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem', fontFamily: 'monospace', height: '50px', resize: 'vertical' }}
-                                      placeholder={
-                                        autoType === 'ntfy'
-                                          ? 'e.g. {"Priority": "urgent", "Tags": "zap,battery"}'
-                                          : autoType === 'mqtt'
-                                          ? 'e.g. {"on": "C", "off": "A"}'
-                                          : 'e.g. {"Authorization": "Bearer tok..."}'
-                                      }
-                                      value={tempAutomationHeaders[loc.id] !== undefined ? tempAutomationHeaders[loc.id] : autoHeaders}
-                                      onChange={e => setTempAutomationHeaders(prev => ({ ...prev, [loc.id]: e.target.value }))}
-                                      onBlur={() => handleUpdateAutomationSettings(loc.id, {
-                                        enabled: true,
-                                        type: autoType,
-                                        target: tempAutomationTarget[loc.id] !== undefined ? tempAutomationTarget[loc.id] : autoTarget,
-                                        headers: tempAutomationHeaders[loc.id] !== undefined ? tempAutomationHeaders[loc.id] : autoHeaders
-                                      })}
-                                    />
-                                  </div>
-                                )}
-
-                                <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.25rem' }}>
-                                  <button 
-                                    className="btn-secondary" 
-                                    style={{ width: '50%', padding: '0.3rem', fontSize: '0.8rem', background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.2)', color: '#10b981' }}
-                                    onClick={() => handleTestAutomation(loc.id, 'on')}
-                                  >
-                                    Test ON
-                                  </button>
-                                  <button 
-                                    className="btn-secondary" 
-                                    style={{ width: '50%', padding: '0.3rem', fontSize: '0.8rem', background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}
-                                    onClick={() => handleTestAutomation(loc.id, 'off')}
-                                  >
-                                    Test OFF
-                                  </button>
-                                </div>
+                        {(() => {
+                          const locAutos = automations.filter(auto => auto.location_id === loc.id);
+                          if (locAutos.length === 0) {
+                            return (
+                              <div style={{ fontSize: '0.8rem', color: '#64748b', textAlign: 'center', padding: '1rem 0' }}>
+                                No integrations configured. Click "+ Add Integration" above.
                               </div>
-                            )}
-                          </div>
-                        );
-                      })()}
+                            );
+                          }
+
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                              {locAutos.map((auto, autoIdx) => {
+                                const autoId = auto.id!;
+                                const tempKeyTarget = `auto_${autoId}`;
+                                
+                                const valTarget = tempAutomationTarget[tempKeyTarget] !== undefined 
+                                  ? tempAutomationTarget[tempKeyTarget] 
+                                  : auto.target;
+                                  
+                                const valHeaders = tempAutomationHeaders[tempKeyTarget] !== undefined 
+                                  ? tempAutomationHeaders[tempKeyTarget] 
+                                  : auto.headers;
+
+                                return (
+                                  <div key={autoId} style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '0.5rem', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#94a3b8' }}>Integration #{autoIdx + 1}</span>
+                                      
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', margin: 0 }}>
+                                          <input 
+                                            type="checkbox" 
+                                            checked={auto.enabled === 1}
+                                            onChange={e => handleUpdateAutomation(autoId, { enabled: e.target.checked ? 1 : 0 })}
+                                            style={{ width: '0.85rem', height: '0.85rem', cursor: 'pointer' }}
+                                          />
+                                          <span style={{ fontSize: '0.75rem', color: auto.enabled === 1 ? '#10b981' : '#64748b' }}>
+                                            {auto.enabled === 1 ? 'Enabled' : 'Disabled'}
+                                          </span>
+                                        </label>
+                                        
+                                        <button
+                                          onClick={() => handleDeleteAutomation(autoId)}
+                                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, marginLeft: '0.25rem', display: 'inline-flex', alignItems: 'center' }}
+                                          title="Delete integration"
+                                        >
+                                          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <label style={{ fontSize: '0.7rem', color: '#64748b' }}>Type:</label>
+                                      <select
+                                        className="form-input"
+                                        style={{ width: '100%', padding: '0.2rem', fontSize: '0.85rem', marginTop: '0.1rem' }}
+                                        value={auto.type}
+                                        onChange={e => handleUpdateAutomation(autoId, { type: e.target.value })}
+                                      >
+                                        <option value="webhook">Webhook (HTTP POST)</option>
+                                        <option value="ntfy">ntfy Notification Service</option>
+                                        <option value="script">Local Shell Script / CLI</option>
+                                        <option value="mqtt">MQTT Message Broker</option>
+                                      </select>
+                                    </div>
+
+                                    <div>
+                                      <label style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                                        {auto.type === 'script'
+                                          ? 'Local Script / CLI Command (use {state} placeholder):'
+                                          : auto.type === 'ntfy'
+                                          ? 'ntfy Topic URL:'
+                                          : auto.type === 'mqtt'
+                                          ? 'MQTT Status Topic:'
+                                          : 'Webhook Endpoint URL:'}
+                                      </label>
+                                      <input
+                                        type="text"
+                                        className="form-input"
+                                        style={{ width: '100%', padding: '0.2rem', fontSize: '0.85rem', marginTop: '0.1rem' }}
+                                        placeholder={
+                                          auto.type === 'script'
+                                            ? 'e.g. tools/handle_ev.sh {state}'
+                                            : auto.type === 'ntfy'
+                                            ? `e.g. https://ntfy.sh/lunagrid-${loc.id || 'automation'}-${getStableSuffix(loc.id || '')}`
+                                            : auto.type === 'mqtt'
+                                            ? 'e.g. evcc/charger/status'
+                                            : 'e.g. http://192.168.1.50:8123/api/webhook/...'
+                                        }
+                                        value={valTarget}
+                                        onChange={e => setTempAutomationTarget(prev => ({ ...prev, [tempKeyTarget]: e.target.value }))}
+                                        onBlur={() => handleUpdateAutomation(autoId, { target: valTarget })}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') {
+                                            e.currentTarget.blur();
+                                          }
+                                        }}
+                                      />
+                                    </div>
+
+                                    {(auto.type === 'webhook' || auto.type === 'ntfy' || auto.type === 'mqtt') && (
+                                      <div>
+                                        <label style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                                          {auto.type === 'ntfy'
+                                            ? 'Custom HTTP Headers (JSON, optional):'
+                                            : auto.type === 'mqtt'
+                                            ? 'Custom MQTT Payloads (JSON, optional - e.g. {"on": "C", "off": "A"}):'
+                                            : 'Custom HTTP Headers (JSON, optional):'}
+                                        </label>
+                                        <textarea
+                                          className="form-input"
+                                          style={{ width: '100%', padding: '0.2rem', fontSize: '0.85rem', marginTop: '0.1rem', fontFamily: 'monospace', height: '40px', resize: 'vertical' }}
+                                          placeholder={
+                                            auto.type === 'ntfy'
+                                              ? 'e.g. {"Priority": "urgent", "Tags": "zap,battery"}'
+                                              : auto.type === 'mqtt'
+                                              ? 'e.g. {"on": "C", "off": "A"}'
+                                              : 'e.g. {"Authorization": "Bearer tok..."}'
+                                          }
+                                          value={valHeaders}
+                                          onChange={e => setTempAutomationHeaders(prev => ({ ...prev, [tempKeyTarget]: e.target.value }))}
+                                          onBlur={() => handleUpdateAutomation(autoId, { headers: valHeaders })}
+                                        />
+                                      </div>
+                                    )}
+
+                                    <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.25rem' }}>
+                                      <button 
+                                        className="btn-secondary" 
+                                        style={{ width: '50%', padding: '0.25rem', fontSize: '0.75rem', background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.2)', color: '#10b981' }}
+                                        onClick={() => handleTestSingleAutomation(autoId, 'on')}
+                                      >
+                                        Test ON
+                                      </button>
+                                      <button 
+                                        className="btn-secondary" 
+                                        style={{ width: '50%', padding: '0.25rem', fontSize: '0.75rem', background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}
+                                        onClick={() => handleTestSingleAutomation(autoId, 'off')}
+                                      >
+                                        Test OFF
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
                   );
                 })
