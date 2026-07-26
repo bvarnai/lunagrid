@@ -1,6 +1,6 @@
 # EV Charging Automation Guide
 
-This guide explains how to configure and use the **EV Charging Automation** in Project Lunagrid. This feature allows you to automate charging state changes and wake up your electric vehicle (e.g., a Skoda Enyaq) when the B-tariff switches to ON (Active/Off-Peak), and gracefully suspend charging when B-tariff switches to OFF (Inactive/On-Peak).
+This guide explains how to configure and use the **EV Charging Automation** in Project Lunagrid. This feature allows you to automate charging state changes and wake up your electric vehicle (e.g., a Skoda Enyaq) when the B-tariff switches to ON, and gracefully suspend charging when B-tariff switches to OFF.
 
 ---
 

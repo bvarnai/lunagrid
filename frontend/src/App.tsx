@@ -203,6 +203,10 @@ export default function App() {
   const [editLocName, setEditLocName] = useState('');
   const [editLocTimezone, setEditLocTimezone] = useState('Europe/Budapest');
 
+  // Form states for editing device friendly name
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [editingFriendlyName, setEditingFriendlyName] = useState('');
+
   // Form states for enrolling pending device
   const [enrollDeviceId, setEnrollDeviceId] = useState('');
   const [enrollFriendlyName, setEnrollFriendlyName] = useState('');
@@ -271,8 +275,8 @@ export default function App() {
       }
       const rand = Math.abs(hash) % 100 / 100;
       
-      const isOffPeak = (hour >= 22 || hour < 6) || (hour >= 12 && hour < 14);
-      const value = (rand < 0.15) ? (isOffPeak ? 0.0 : 1.0) : (isOffPeak ? 1.0 : 0.0);
+      const isBTariffON = (hour >= 22 || hour < 6) || (hour >= 12 && hour < 14);
+      const value = (rand < 0.15) ? (isBTariffON ? 0.0 : 1.0) : (isBTariffON ? 1.0 : 0.0);
       list.push({ time: time.toISOString(), value });
     }
     setRangeHistory(list);
@@ -648,7 +652,7 @@ export default function App() {
         const newGridState = toggleState ? !prev.gridActive : prev.gridActive;
         if (toggleState && showDiagnostics) {
           const now = new Date().toLocaleTimeString();
-          setLogs(prevLogs => [`[${now}] Mock Grid toggled to ${newGridState ? 'OFF-PEAK' : 'ON-PEAK'}`, ...prevLogs.slice(0, 5)]);
+          setLogs(prevLogs => [`[${now}] Mock Grid toggled to ${newGridState ? 'B-Tariff ON' : 'B-Tariff OFF'}`, ...prevLogs.slice(0, 5)]);
         }
         
         let currentVer = prev.firmwareVersion || '1.0.0';
@@ -916,6 +920,38 @@ export default function App() {
         setDevices(prev => prev.filter(d => d.id !== id));
       }
     }
+  };
+
+  // Update device friendly name
+  const handleUpdateFriendlyName = async (id: string, newName: string) => {
+    if (!newName.trim()) return;
+    if (isBackendConnected) {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/devices/${id}/friendly-name`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ friendlyName: newName })
+        });
+        if (res.ok) {
+          fetchMetadata();
+          setLogs(prev => [`[SYSTEM] Updated friendly name of device ${id} to "${newName}"`, ...prev]);
+        } else {
+          const errData = await res.json();
+          alert(`Failed to update friendly name: ${errData.error || res.statusText}`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to update friendly name due to network error');
+      }
+    } else {
+      // Mock update locally
+      setDevices(prev =>
+        prev.map(d => d.id === id ? { ...d, friendly_name: newName } : d)
+      );
+    }
+    setEditingDeviceId(null);
   };
 
   // Delete a location
@@ -1399,7 +1435,7 @@ export default function App() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                   </svg>
                 </div>
-                <h2>{telemetry.gridActive ? 'OFF-PEAK (B-Tariff Active)' : 'ON-PEAK (B-Tariff Inactive)'}</h2>
+                <h2>{telemetry.gridActive ? 'B-Tariff ON' : 'B-Tariff OFF'}</h2>
                 <p>Device: {telemetry.friendlyName || telemetry.deviceId || 'None'}</p>
               </>
             )}
@@ -1419,7 +1455,7 @@ export default function App() {
 
                     if (block.value !== null) {
                       const percentage = Math.round(block.value * 100);
-                      statusLabel = `${percentage}% Active (Off-Peak)`;
+                      statusLabel = `${percentage}% B-Tariff ON`;
 
                       if (block.value <= 0.05) {
                         bgColor = '#ef4444'; // 0% active (red)
@@ -1971,7 +2007,58 @@ export default function App() {
                       return (
                         <tr key={dev.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                           <td style={{ padding: '0.75rem 0.5rem', fontFamily: 'monospace' }}>{dev.id}</td>
-                          <td style={{ padding: '0.75rem 0.5rem' }}>{dev.friendly_name || 'Unconfigured'}</td>
+                          <td style={{ padding: '0.75rem 0.5rem' }}>
+                            {editingDeviceId === dev.id ? (
+                              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <input 
+                                  type="text" 
+                                  className="form-input" 
+                                  style={{ padding: '0.2rem 0.4rem', fontSize: '0.85rem', margin: 0, width: '180px' }}
+                                  value={editingFriendlyName}
+                                  onChange={e => setEditingFriendlyName(e.target.value)}
+                                  autoFocus
+                                />
+                                <button 
+                                  className="btn-secondary" 
+                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.2)', color: '#10b981' }}
+                                  onClick={() => handleUpdateFriendlyName(dev.id, editingFriendlyName)}
+                                >
+                                  Save
+                                </button>
+                                <button 
+                                  className="btn-secondary" 
+                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem' }}
+                                  onClick={() => setEditingDeviceId(null)}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span>{dev.friendly_name || 'Unconfigured'}</span>
+                                <button
+                                  onClick={() => {
+                                    setEditingDeviceId(dev.id);
+                                    setEditingFriendlyName(dev.friendly_name || '');
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#3b82f6',
+                                    cursor: 'pointer',
+                                    padding: 0,
+                                    display: 'inline-flex',
+                                    alignItems: 'center'
+                                  }}
+                                  title="Edit Friendly Name"
+                                >
+                                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                          </td>
                           <td style={{ padding: '0.75rem 0.5rem' }}>{locationName}</td>
                           <td style={{ padding: '0.75rem 0.5rem' }}>
                             <span className={`badge ${dev.status === 'ACTIVE' ? 'badge-online' : 'badge-offline'}`} style={{ display: 'inline-flex', padding: '0.15rem 0.5rem', fontSize: '0.75rem' }}>
@@ -2360,7 +2447,7 @@ export default function App() {
 
                             if (block.value !== null) {
                               const percentage = Math.round(block.value * 100);
-                              statusLabel = `${percentage}% Active (Off-Peak)`;
+                              statusLabel = `${percentage}% B-Tariff ON`;
                               bgColor = block.value > 0.5 ? '#10b981' : '#ef4444';
                             }
                           }
@@ -2410,7 +2497,7 @@ export default function App() {
 
           {/* EV Charging Estimator Card */}
           <div className="card col-12" style={{ marginTop: '0rem' }}>
-            <h3>Off-Peak Charging Capacity Estimator</h3>
+            <h3>B-Tariff Charging Capacity Estimator</h3>
             <p className="info-txt">Calculate the average energy and estimated driving range delivered to your EV during your daily home charging window, based on real historical B-tariff availability.</p>
             
             {locations.length === 0 ? (
@@ -2419,7 +2506,7 @@ export default function App() {
               </div>
             ) : !isMockMode && !isBackendOnline ? (
               <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
-                Connect to the backend to calculate historical off-peak capacity.
+                Connect to the backend to calculate historical B-tariff capacity.
               </div>
             ) : (
               (() => {

@@ -114,7 +114,7 @@ client.on('connect', () => {
       // Small chance (10%) to toggle grid status randomly during continuous execution
       if (Math.random() < 0.1) {
         gridActive = !gridActive;
-        console.log(`\n[EVENT] Simulated Grid switch toggled state dynamically to: ${gridActive ? 'ON-PEAK' : 'OFF-PEAK'}\n`);
+        console.log(`\n[EVENT] Simulated Grid switch toggled state dynamically to: ${gridActive ? 'B-Tariff ON' : 'B-Tariff OFF'}\n`);
       }
       publishPayloads();
     }, intervalSeconds * 1000);

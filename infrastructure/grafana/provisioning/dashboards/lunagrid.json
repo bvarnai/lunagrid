@@ -65,11 +65,11 @@
               "type": "value",
               "options": {
                 "true": {
-                  "text": "OFF-PEAK (B-Tariff Active)",
+                  "text": "B-Tariff ON",
                   "color": "green"
                 },
                 "false": {
-                  "text": "ON-PEAK (B-Tariff Inactive)",
+                  "text": "B-Tariff OFF",
                   "color": "red"
                 }
               }

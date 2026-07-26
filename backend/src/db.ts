@@ -261,6 +261,14 @@ export const unregisterDevice = async (id: string): Promise<void> => {
   await runQuery('DELETE FROM devices WHERE id = ?', [id]);
 };
 
+// Update device friendly name
+export const updateDeviceFriendlyName = async (id: string, friendlyName: string): Promise<void> => {
+  await runQuery(
+    'UPDATE devices SET friendly_name = ? WHERE id = ?',
+    [friendlyName, id]
+  );
+};
+
 // Firmware Releases
 export interface FirmwareRelease {
   version: string;

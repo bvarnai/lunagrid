@@ -18,6 +18,7 @@ import {
   enrollDevice,
   bindDeviceToLocation,
   unregisterDevice,
+  updateDeviceFriendlyName,
   getAllReleases,
   createRelease,
   deleteRelease,
@@ -672,6 +673,25 @@ app.delete('/api/devices/:id', async (req, res) => {
   }
 });
 
+// Update device friendly name
+app.patch('/api/devices/:id/friendly-name', async (req, res) => {
+  const id = req.params.id;
+  const { friendlyName } = req.body;
+  if (friendlyName === undefined) {
+    return res.status(400).json({ error: 'friendlyName is required' });
+  }
+  try {
+    const device = await getDeviceById(id);
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    await updateDeviceFriendlyName(id, friendlyName);
+    res.json({ status: 'success', message: `Device ${id} friendly name updated to ${friendlyName}.` });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update friendly name' });
+  }
+});
+
 // --- Firmware Releases API ---
 
 // Get all releases
@@ -896,7 +916,7 @@ const startServer = async () => {
         status: device?.status || 'PENDING'
       };
 
-      const statusText = telemetryCache[deviceId].gridActive ? 'OFF-PEAK (B-Tariff Active)' : 'ON-PEAK (B-Tariff Inactive)';
+      const statusText = telemetryCache[deviceId].gridActive ? 'B-Tariff ON' : 'B-Tariff OFF';
       const logLine = `Type: ${messageType.toUpperCase()} | Device: ${deviceId} | Location: ${enrichedPayload.location_id || 'UNASSIGNED'} | State: ${statusText}`;
       console.log(`[INGEST] ${logLine}`);
       addLog(logLine);

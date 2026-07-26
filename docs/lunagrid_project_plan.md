@@ -155,7 +155,7 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
 ### 5.3 Visualization & End-User Interface
 *   **Single-Page React Portal:** Built as a tabbed web interface optimized for modern desktop layouts:
     1.  **Dashboard Tab:**
-        *   **Grid State Hero:** Real-time B-tariff status reading either `OFF-PEAK (B-Tariff Active)` (Green) or `ON-PEAK (B-Tariff Inactive)` (Red).
+        *   **Grid State Hero:** Real-time B-tariff status reading either `B-Tariff ON` (Green) or `B-Tariff OFF` (Red).
         *   **Today's Availability Strip:** A 24-segment timeline strip visualizing B-tariff active hours for the current calendar day (from 00:00 to 23:00).
         *   **Contractual Compliance (7-Day Overview):** 7 calendar blocks calculating B-tariff hours per day. Marks days **`🟢 COMPLIANT`** (hours >= 8.0) or **`🔴 FAIL`** (hours < 8.0). Renders as **`⚫ N/A`** for days with missing telemetry.
         *   **Diagnostic Parameters:** Real-time RSSI signal quality badges, heap size, and formatted uptime.
