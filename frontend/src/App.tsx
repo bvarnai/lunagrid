@@ -1023,26 +1023,28 @@ export default function App() {
     }
   };
 
-  const handleTestAutomation = async (locationId: string) => {
+  const handleTestAutomation = async (locationId: string, state: 'on' | 'off') => {
     if (!isBackendConnected) {
-      alert('[MOCK] EV Charging automation test triggered (Standalone Mock Mode - check console logs)');
-      setLogs(prev => [`[MOCK EV AUTOMATION TEST] Triggered locally for ${locationId}`, ...prev]);
+      alert(`[MOCK] EV Charging automation test (${state.toUpperCase()}) triggered (Standalone Mock Mode - check console logs)`);
+      setLogs(prev => [`[MOCK EV AUTOMATION TEST] Triggered locally for ${locationId} (state: ${state})`, ...prev]);
       return;
     }
 
     try {
       const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/automation/test`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state })
       });
       if (res.ok) {
-        alert('EV charging automation test triggered successfully! Check the system logs for status.');
+        alert(`EV charging automation test (${state.toUpperCase()}) triggered successfully! Check the system logs for status.`);
       } else {
         const errData = await res.json();
         alert(`Test trigger failed: ${errData.error || 'Unknown error'}`);
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to connect to backend to trigger charging automation test.');
+      alert(`Failed to connect to backend to trigger charging automation test (${state.toUpperCase()}).`);
     }
   };
 
@@ -1919,10 +1921,17 @@ export default function App() {
                                 <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.25rem' }}>
                                   <button 
                                     className="btn-secondary" 
-                                    style={{ width: '100%', padding: '0.3rem', fontSize: '0.8rem', background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.2)', color: '#10b981' }}
-                                    onClick={() => handleTestAutomation(loc.id)}
+                                    style={{ width: '50%', padding: '0.3rem', fontSize: '0.8rem', background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.2)', color: '#10b981' }}
+                                    onClick={() => handleTestAutomation(loc.id, 'on')}
                                   >
-                                    Test Automation (ON)
+                                    Test ON
+                                  </button>
+                                  <button 
+                                    className="btn-secondary" 
+                                    style={{ width: '50%', padding: '0.3rem', fontSize: '0.8rem', background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}
+                                    onClick={() => handleTestAutomation(loc.id, 'off')}
+                                  >
+                                    Test OFF
                                   </button>
                                 </div>
                               </div>

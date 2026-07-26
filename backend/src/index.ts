@@ -589,13 +589,15 @@ app.post('/api/locations/:id/automation', async (req, res) => {
   }
 });
 
-// Trigger a manual EV charging automation test (ON)
+// Trigger a manual EV charging automation test (ON or OFF)
 app.post('/api/locations/:id/automation/test', async (req, res) => {
   const locationId = req.params.id;
+  const { state } = req.body;
+  const targetState = (state === 'off') ? 'off' : 'on';
   try {
-    const result = await triggerEvAutomation(locationId, 'on', true);
+    const result = await triggerEvAutomation(locationId, targetState, true);
     if (result.success) {
-      res.json({ status: 'success', message: 'EV charging automation test triggered successfully' });
+      res.json({ status: 'success', message: `EV charging automation test (${targetState.toUpperCase()}) triggered successfully` });
     } else {
       res.status(500).json({ error: result.error, details: 'details' in result ? (result as any).details : undefined });
     }
@@ -623,10 +625,12 @@ app.post('/api/locations/:id/wakeup', async (req, res) => {
 
 app.post('/api/locations/:id/wakeup/test', async (req, res) => {
   const locationId = req.params.id;
+  const { state } = req.body;
+  const targetState = (state === 'off') ? 'off' : 'on';
   try {
-    const result = await triggerEvAutomation(locationId, 'on', true);
+    const result = await triggerEvAutomation(locationId, targetState, true);
     if (result.success) {
-      res.json({ status: 'success', message: 'EV test triggered successfully' });
+      res.json({ status: 'success', message: `EV test (${targetState.toUpperCase()}) triggered successfully` });
     } else {
       res.status(500).json({ error: result.error, details: 'details' in result ? (result as any).details : undefined });
     }
