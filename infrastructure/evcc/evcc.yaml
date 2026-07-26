@@ -1,10 +1,13 @@
 # EVCC Configuration File
-# Reverse-engineered from ~/evcc-backup-2026-07-17--18-41.db
+# Updated for MQTT-based passive charging state monitoring flow
 
 network:
   schema: http
   host: 0.0.0.0
   port: 7070
+
+mqtt:
+  broker: lunagrid-mosquitto:1883
 
 # Site settings
 site:
@@ -14,25 +17,27 @@ site:
 chargers:
   - name: rheidon_pc200_3k6
     type: custom
-    features:
-      - switchdevice # Tells EVCC this is an on/off switchless charger
     status:
-      source: http
-      uri: http://lunagrid-backend:3000/api/locations/budapest-home-1/telemetry
-      jq: if .gridActive then "B" else "A" end
+      source: mqtt
+      topic: evcc/charger/status
     enabled:
-      source: http
-      uri: http://lunagrid-backend:3000/api/locations/budapest-home-1/telemetry
-      jq: .gridActive
+      source: const
+      value: "true"
     enable:
       source: js
-      script: console.log(enable)
+      script:
     maxcurrent:
       source: js
-      script: console.log(maxcurrent)
+      script:
     power:
-      source: const
-      value: 4000 # Charger power in W
+      source: js
+      script: "status === 'C' ? 3680 : 0"
+      in:
+        - name: status
+          type: string
+          config:
+            source: mqtt
+            topic: evcc/charger/status
 
 vehicles:
   - name: my_enyaq

@@ -22,7 +22,8 @@ import {
   createRelease,
   deleteRelease,
   getLocationById,
-  updateLocationEvWakeup
+  updateLocationEvWakeup,
+  updateLocationEvAutomation
 } from './db.js'; // Note the .js extension for ES Module compatibility
 
 dotenv.config();
@@ -395,29 +396,32 @@ app.get('/api/locations/:id/compliance', async (req, res) => {
 
 // --- EV Wake-up Integration Trigger and Endpoints ---
 
-async function triggerEvWakeup(locationId: string, isManualTest: boolean = false) {
+async function triggerEvAutomation(locationId: string, state: 'on' | 'off', isManualTest: boolean = false) {
   try {
     const location = await getLocationById(locationId);
     if (!location) {
-      console.warn(`[EV WAKEUP] Location ${locationId} not found.`);
+      console.warn(`[EV AUTOMATION] Location ${locationId} not found.`);
       return { success: false, error: 'Location not found' };
     }
 
-    if (!isManualTest && (!location.ev_wakeup_enabled || location.ev_wakeup_enabled === 0)) {
+    const enabled = location.ev_automation_enabled !== undefined ? location.ev_automation_enabled : location.ev_wakeup_enabled;
+    const type = location.ev_automation_type || location.ev_wakeup_type || 'webhook';
+    const target = location.ev_automation_target || location.ev_wakeup_target || '';
+    const headersStr = location.ev_automation_headers || location.ev_wakeup_headers || '';
+
+    if (!isManualTest && (!enabled || enabled === 0)) {
       return { success: false, error: 'Integration disabled' };
     }
 
-    const target = location.ev_wakeup_target || '';
     if (!target.trim()) {
-      const msg = `[EV WAKEUP] No wake-up target configured for location ${location.name}.`;
+      const msg = `[EV AUTOMATION] No target configured for location ${location.name}.`;
       console.warn(msg);
       addLog(msg);
       return { success: false, error: 'No target configured' };
     }
 
-    const type = location.ev_wakeup_type || 'webhook';
-    const logPrefix = isManualTest ? '[EV WAKEUP TEST]' : '[EV WAKEUP]';
-    const startMsg = `${logPrefix} Triggering wake-up for location: ${location.name} (${type})`;
+    const logPrefix = isManualTest ? '[EV AUTOMATION TEST]' : '[EV AUTOMATION]';
+    const startMsg = `${logPrefix} Triggering state "${state}" for location: ${location.name} (${type})`;
     console.log(startMsg);
     addLog(startMsg);
 
@@ -426,9 +430,9 @@ async function triggerEvWakeup(locationId: string, isManualTest: boolean = false
         'Content-Type': 'application/json'
       };
 
-      if (location.ev_wakeup_headers) {
+      if (headersStr) {
         try {
-          const parsed = JSON.parse(location.ev_wakeup_headers);
+          const parsed = JSON.parse(headersStr);
           customHeaders = { ...customHeaders, ...parsed };
         } catch (e) {
           const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON headers: ${e instanceof Error ? e.message : String(e)}`;
@@ -438,7 +442,8 @@ async function triggerEvWakeup(locationId: string, isManualTest: boolean = false
       }
 
       const body = JSON.stringify({
-        event: isManualTest ? 'TEST_WAKEUP' : 'B_TARIFF_ON',
+        event: isManualTest ? `TEST_${state.toUpperCase()}` : `B_TARIFF_${state.toUpperCase()}`,
+        status: state,
         locationId: location.id,
         locationName: location.name,
         timestamp: Date.now()
@@ -465,14 +470,14 @@ async function triggerEvWakeup(locationId: string, isManualTest: boolean = false
 
     } else if (type === 'ntfy') {
       let customHeaders: Record<string, string> = {
-        'Title': isManualTest ? 'EV Wake-up Test' : `EV Wake-up: B-tariff ON (${location.name})`,
+        'Title': isManualTest ? `EV Charging Test: ${state.toUpperCase()}` : `EV Charging: B-tariff ${state.toUpperCase()} (${location.name})`,
         'Priority': 'high',
         'Tags': 'electric_plug,car'
       };
 
-      if (location.ev_wakeup_headers) {
+      if (headersStr) {
         try {
-          const parsed = JSON.parse(location.ev_wakeup_headers);
+          const parsed = JSON.parse(headersStr);
           customHeaders = { ...customHeaders, ...parsed };
         } catch (e) {
           const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON headers: ${e instanceof Error ? e.message : String(e)}`;
@@ -482,8 +487,8 @@ async function triggerEvWakeup(locationId: string, isManualTest: boolean = false
       }
 
       const body = isManualTest
-        ? `Test notification sent successfully for location: ${location.name}`
-        : `B-tariff (low-cost electricity) is now ON at location "${location.name}". Please check your EV charging status.`;
+        ? `Test notification sent successfully for location: ${location.name} (state: ${state})`
+        : `B-tariff (low-cost electricity) is now ${state.toUpperCase()} at location "${location.name}". Please check your EV charging status.`;
 
       const response = await fetch(target, {
         method: 'POST',
@@ -506,7 +511,14 @@ async function triggerEvWakeup(locationId: string, isManualTest: boolean = false
 
     } else if (type === 'script') {
       return new Promise<{ success: boolean; error?: string }>((resolve) => {
-        exec(target, (err, stdout, stderr) => {
+        const commandToRun = target.replace(/{state}/g, state);
+        const runEnv = {
+          ...process.env,
+          EV_STATE: state,
+          LUNAGRID_STATE: state
+        };
+
+        exec(commandToRun, { env: runEnv }, (err, stdout, stderr) => {
           if (err) {
             const errMsg = `${logPrefix} Script execution failed: ${err.message}`;
             console.error(errMsg);
@@ -520,18 +532,79 @@ async function triggerEvWakeup(locationId: string, isManualTest: boolean = false
           }
         });
       });
+
+    } else if (type === 'mqtt') {
+      if (mqttClient && mqttClient.connected) {
+        let payload = state === 'on' ? 'C' : 'A';
+        if (headersStr) {
+          try {
+            const parsed = JSON.parse(headersStr);
+            if (state === 'on' && parsed.on !== undefined) {
+              payload = String(parsed.on);
+            } else if (state === 'off' && parsed.off !== undefined) {
+              payload = String(parsed.off);
+            }
+          } catch (e) {
+            const warnMsg = `${logPrefix} Warning: Failed to parse custom JSON payloads: ${e instanceof Error ? e.message : String(e)}`;
+            console.warn(warnMsg);
+            addLog(warnMsg);
+          }
+        }
+        mqttClient.publish(target, payload, { qos: 1, retain: true });
+        const successMsg = `${logPrefix} MQTT message '${payload}' published successfully to ${target}.`;
+        console.log(successMsg);
+        addLog(successMsg);
+        return { success: true };
+      } else {
+        const errMsg = `${logPrefix} MQTT client not connected.`;
+        console.error(errMsg);
+        addLog(errMsg);
+        return { success: false, error: 'MQTT client not connected' };
+      }
     }
 
     return { success: false, error: 'Unknown integration type' };
   } catch (error) {
-    const errMsg = `[EV WAKEUP] Unexpected error: ${error instanceof Error ? error.message : String(error)}`;
+    const errMsg = `[EV AUTOMATION] Unexpected error: ${error instanceof Error ? error.message : String(error)}`;
     console.error(errMsg);
     addLog(errMsg);
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-// Update EV wake-up settings for a location
+// Update EV charging automation settings for a location
+app.post('/api/locations/:id/automation', async (req, res) => {
+  const locationId = req.params.id;
+  const { enabled, type, target, headers } = req.body;
+
+  if (typeof enabled !== 'boolean' || !type || target === undefined) {
+    return res.status(400).json({ error: 'enabled (boolean), type, and target are required' });
+  }
+
+  try {
+    await updateLocationEvAutomation(locationId, enabled, type, target, headers || '');
+    res.json({ status: 'success', message: 'EV charging automation settings updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update EV charging automation settings' });
+  }
+});
+
+// Trigger a manual EV charging automation test (ON)
+app.post('/api/locations/:id/automation/test', async (req, res) => {
+  const locationId = req.params.id;
+  try {
+    const result = await triggerEvAutomation(locationId, 'on', true);
+    if (result.success) {
+      res.json({ status: 'success', message: 'EV charging automation test triggered successfully' });
+    } else {
+      res.status(500).json({ error: result.error, details: 'details' in result ? (result as any).details : undefined });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// Keep legacy endpoints as fallback wrappers for backward compatibility
 app.post('/api/locations/:id/wakeup', async (req, res) => {
   const locationId = req.params.id;
   const { enabled, type, target, headers } = req.body;
@@ -541,20 +614,19 @@ app.post('/api/locations/:id/wakeup', async (req, res) => {
   }
 
   try {
-    await updateLocationEvWakeup(locationId, enabled, type, target, headers || '');
-    res.json({ status: 'success', message: 'EV wake-up settings updated successfully' });
+    await updateLocationEvAutomation(locationId, enabled, type, target, headers || '');
+    res.json({ status: 'success', message: 'EV settings updated successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update EV wake-up settings' });
+    res.status(500).json({ error: 'Failed to update EV settings' });
   }
 });
 
-// Trigger a manual EV wake-up test
 app.post('/api/locations/:id/wakeup/test', async (req, res) => {
   const locationId = req.params.id;
   try {
-    const result = await triggerEvWakeup(locationId, true);
+    const result = await triggerEvAutomation(locationId, 'on', true);
     if (result.success) {
-      res.json({ status: 'success', message: 'EV wake-up test triggered successfully' });
+      res.json({ status: 'success', message: 'EV test triggered successfully' });
     } else {
       res.status(500).json({ error: result.error, details: 'details' in result ? (result as any).details : undefined });
     }
@@ -792,11 +864,17 @@ const startServer = async () => {
         telemetryCache[deviceId].gridActive = newState;
         telemetryCache[deviceId].timestamp = Date.now();
 
-        // Trigger EV wake-up if transitioning from OFF-PEAK (false) to ON-PEAK (true)
-        if (newState === true && previousState === false && device?.location_id) {
-          triggerEvWakeup(device.location_id).catch(err => {
-            console.error('[EV WAKEUP] Trigger failed:', err);
-          });
+        // Trigger EV integration on state transition
+        if (device?.location_id) {
+          if (newState === true && previousState === false) {
+            triggerEvAutomation(device.location_id, 'on').catch(err => {
+              console.error('[EV AUTOMATION] ON Trigger failed:', err);
+            });
+          } else if (newState === false && previousState === true) {
+            triggerEvAutomation(device.location_id, 'off').catch(err => {
+              console.error('[EV AUTOMATION] OFF Trigger failed:', err);
+            });
+          }
         }
       } else if (messageType === 'telemetry') {
         telemetryCache[deviceId].uptime = payload.metrics.uptime_seconds;

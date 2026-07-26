@@ -16,6 +16,10 @@ export interface Location {
   ev_wakeup_type?: string;
   ev_wakeup_target?: string;
   ev_wakeup_headers?: string;
+  ev_automation_enabled?: number;
+  ev_automation_type?: string;
+  ev_automation_target?: string;
+  ev_automation_headers?: string;
 }
 
 export interface Device {
@@ -101,6 +105,29 @@ export const initDb = async (): Promise<void> => {
   await addColumnSafe('ev_wakeup_target', 'TEXT DEFAULT \'\'');
   await addColumnSafe('ev_wakeup_headers', 'TEXT DEFAULT \'\'');
 
+  await addColumnSafe('ev_automation_enabled', 'INTEGER DEFAULT 0');
+  await addColumnSafe('ev_automation_type', 'TEXT DEFAULT \'webhook\'');
+  await addColumnSafe('ev_automation_target', 'TEXT DEFAULT \'\'');
+  await addColumnSafe('ev_automation_headers', 'TEXT DEFAULT \'\'');
+
+  // Migrate existing data from ev_wakeup_* to ev_automation_* if they contain values
+  try {
+    const locations = await allQuery<Location>('SELECT * FROM locations');
+    for (const loc of locations) {
+      if (loc.ev_wakeup_enabled || loc.ev_wakeup_target || loc.ev_wakeup_headers) {
+        if (!loc.ev_automation_enabled && !loc.ev_automation_target) {
+          console.log(`[DATABASE] Migrating EV wakeup settings to EV charging automation settings for location: ${loc.id}`);
+          await runQuery(
+            'UPDATE locations SET ev_automation_enabled = ?, ev_automation_type = ?, ev_automation_target = ?, ev_automation_headers = ? WHERE id = ?',
+            [loc.ev_wakeup_enabled || 0, loc.ev_wakeup_type || 'webhook', loc.ev_wakeup_target || '', loc.ev_wakeup_headers || '', loc.id]
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[DATABASE] Migration error migrating wakeup columns to automation columns:', err);
+  }
+
   // Seed default locations if empty
   const locationCount = await getQuery<{ count: number }>('SELECT COUNT(*) as count FROM locations');
   if (locationCount && locationCount.count === 0) {
@@ -153,8 +180,21 @@ export const updateLocationEvWakeup = async (
   headers: string
 ): Promise<void> => {
   await runQuery(
-    'UPDATE locations SET ev_wakeup_enabled = ?, ev_wakeup_type = ?, ev_wakeup_target = ?, ev_wakeup_headers = ? WHERE id = ?',
-    [enabled ? 1 : 0, type, target, headers, id]
+    'UPDATE locations SET ev_wakeup_enabled = ?, ev_wakeup_type = ?, ev_wakeup_target = ?, ev_wakeup_headers = ?, ev_automation_enabled = ?, ev_automation_type = ?, ev_automation_target = ?, ev_automation_headers = ? WHERE id = ?',
+    [enabled ? 1 : 0, type, target, headers, enabled ? 1 : 0, type, target, headers, id]
+  );
+};
+
+export const updateLocationEvAutomation = async (
+  id: string,
+  enabled: boolean,
+  type: string,
+  target: string,
+  headers: string
+): Promise<void> => {
+  await runQuery(
+    'UPDATE locations SET ev_wakeup_enabled = ?, ev_wakeup_type = ?, ev_wakeup_target = ?, ev_wakeup_headers = ?, ev_automation_enabled = ?, ev_automation_type = ?, ev_automation_target = ?, ev_automation_headers = ? WHERE id = ?',
+    [enabled ? 1 : 0, type, target, headers, enabled ? 1 : 0, type, target, headers, id]
   );
 };
 

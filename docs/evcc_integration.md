@@ -2,27 +2,77 @@
 
 This guide explains how to integrate **EVCC (Electric Vehicle Charge Controller)** with Project Lunagrid. 
 
-In this setup, EVCC acts as the smart charging controller for a switchless/passive charger (e.g., a **Rheidon PC200-3K6** single-phase charger) and a **Škoda Enyaq** (60 kWh battery). Instead of complex scripts or manual webhooks, EVCC queries the Lunagrid Backend REST API directly via HTTP polling to monitor B-tariff grid status and natively wake up the vehicle.
+In this setup, EVCC acts as the energy management and smart charging controller for a switchless/passive charger (e.g., a **Rheidon PC200-3K6** single-phase charger) and a **Škoda Enyaq** (60 kWh battery). 
+
+There are two supported integration approaches:
+1. **MQTT-Based Push Integration (Recommended)**: Lunagrid automatically publishes charger status (`"C"` or `"A"`) to the MQTT broker on state transitions, and EVCC reacts instantly.
+2. **HTTP-Polling-Based Pull Integration (Legacy)**: EVCC polls the Lunagrid backend REST API endpoint periodically to check the state.
 
 ---
 
-## 1. Overview of the Setup
+## 1. MQTT-Based Push Integration (Recommended)
 
+In this flow, EVCC acts as a passive monitor following the state of the physical socket/contactor managed by the User/App (B-tariff grid state).
+
+### Flow Diagram
 ```
 [ Contactor Power ]
-       │ (B-tariff ON/OFF)
+       │ (B-tariff ON/OFF state transition)
        ▼
- ┌───────────┐      MQTT      ┌──────────────┐                 ┌────────┐    MySkoda API    ┌─────────────┐
- │ ESP32 Node│ ─────────────> │ Lunagrid API │ <────────────── │  EVCC  │ ────────────────> │ Skoda Cloud │
- └───────────┘                └──────────────┘ (HTTP Polling)  └────────┘                   └─────────────┘
-                                                                   │                               │
-                                                                   ▼ (AC Pilot)                    ▼ (Wake Command)
-                                                              ┌──────────┐                    ┌───────────┐
-                                                              │ Rheidon  │ ────────────────── │   EV      │
-                                                              │ Charger  │ (Plugged in)       │ (Enyaq)   │
-                                                              └──────────┘                    └───────────┘
+ ┌───────────┐      MQTT (State Change)      ┌──────────────┐                 ┌────────┘    MySkoda API    ┌─────────────┐
+ │ ESP32 Node│ ────────────────────────────> │ Lunagrid API │ ──────────────> │  EVCC  │ ────────────────> │ Skoda Cloud │
+ └───────────┘                               └──────────────┘                 └────────┘                   └─────────────┘
+                                                                                  │                               │
+                                                                                  ▼ (AC Pilot)                    ▼ (Wake Command)
+                                                                             ┌──────────┐                    ┌───────────┐
+                                                                             │ Rheidon  │ ────────────────── │   EV      │
+                                                                             │ Charger  │ (Plugged in)       │ (Enyaq)   │
+                                                                             └──────────┘                    └───────────┘
 ```
 
+### How it Works
+1. **Status Update:** The **User/App** decides when charging is allowed based on B-tariff. When B-tariff goes ON/OFF, the backend publishes the observed state (`"C"` or `"A"`) to the MQTT topic configured under EV Wake-up settings.
+2. **EVCC Status Monitor:** EVCC reads the status, automatically registers the vehicle connection/disconnection, and starts/stops the charging session.
+3. **Power Calculation:** Since the dumb charger has no physical power meter, EVCC calculates power draw in Javascript based on the status: returning `3680 W` (16A at 230V) when charging (status `"C"`), and `0 W` when standby (status `"A"`).
+
+### EVCC Configuration (`evcc.yaml`)
+```yaml
+mqtt:
+  broker: lunagrid-mosquitto:1883
+
+chargers:
+  - name: rheidon_pc200_3k6
+    type: custom
+    status:
+      source: mqtt
+      topic: evcc/charger/status
+    enabled:
+      source: const
+      value: "true"
+    enable:
+      source: js
+      script:
+    maxcurrent:
+      source: js
+      script:
+    power:
+      source: js
+      script: "status === 'C' ? 3680 : 0"
+      in:
+        - name: status
+          type: string
+          config:
+            source: mqtt
+            topic: evcc/charger/status
+```
+
+---
+
+## 2. HTTP-Polling-Based Pull Integration (Legacy)
+
+In this legacy setup, EVCC queries the Lunagrid backend REST API directly.
+
+### How it Works
 1. **contactor state -> EVCC Status:** Lunagrid publishes the grid contactor state to MQTT. The backend caches this telemetry.
 2. **HTTP Polling:** EVCC polls the Lunagrid backend REST API endpoint `/api/locations/<location-id>/telemetry`.
 3. **Charger State Mapping:** 
@@ -30,19 +80,8 @@ In this setup, EVCC acts as the smart charging controller for a switchless/passi
    - When B-tariff turns ON, status transitions to `B` (connected/ready).
 4. **Native Vehicle Wakeup:** Upon status transition to `B`, EVCC starts the loadpoint charge session and automatically triggers its native wakeup routine using the Škoda Cloud API to wake the vehicle.
 
----
-
-## 2. EVCC Configuration (`evcc.yaml`)
-
-Configure your custom charger to poll the Lunagrid backend and set up the Škoda vehicle template in `/etc/evcc.yaml`:
-
+### EVCC Configuration (`evcc.yaml`)
 ```yaml
-# /etc/evcc.yaml
-network:
-  schema: http
-  host: 0.0.0.0
-  port: 7070
-
 chargers:
   - name: rheidon_pc200_3k6
     type: custom
@@ -62,33 +101,7 @@ chargers:
     maxcurrent:
       source: const
       value: 16 # Fixed hardware limit of the Rheidon charger
-
-vehicles:
-  - name: my_enyaq
-    type: template
-    template: skoda
-    title: Skoda Enyaq
-    user: "your_skoda_email@gmail.com"
-    password: "your_skoda_password"
-    vin: "TMBJB7NY8NFXXXXXX" # Replace with your vehicle's VIN
-    capacity: 60             # 60 kWh battery pack
-    phases: 1                # Single phase charging
-
-loadpoints:
-  - title: Garage Socket (B-Tariff)
-    charger: rheidon_pc200_3k6
-    vehicle: my_enyaq
-    mode: now # Set to now so EVCC charges whenever B-tariff is active
-    phases: 1
-    mincurrent: 6
-    maxcurrent: 16
 ```
-
-### Explanation of Configuration:
-* **`type: custom`**: Since there is no native "dummy" charger type in official EVCC, we define a user-defined custom charger.
-* **`enabled` & `status`**: We poll the Lunagrid telemetry API. When B-tariff is active (`.gridActive` is true), the charger status becomes `B` (connected) and enabled is `true`, prompting EVCC to start charging. When B-tariff is OFF, the charger transitions to `A` (disconnected) and `enabled: false`, completing the session cleanly.
-* **`enable: /bin/true`**: A mandatory no-op script because EVCC requires a write command for `enable` in custom chargers, though physical control is dictated by B-tariff grid contactors.
-* **Automatic Cutoff:** Since the Skoda Enyaq has its battery balance mode permanently enabled, it will stop charging at 80% automatically by default, eliminating any safety concerns from the switchless charger.
 
 ---
 

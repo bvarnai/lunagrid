@@ -8,6 +8,10 @@ interface Location {
   ev_wakeup_type?: string;
   ev_wakeup_target?: string;
   ev_wakeup_headers?: string;
+  ev_automation_enabled?: number;
+  ev_automation_type?: string;
+  ev_automation_target?: string;
+  ev_automation_headers?: string;
 }
 
 interface Device {
@@ -205,9 +209,9 @@ export default function App() {
   const [enrollLocationId, setEnrollLocationId] = useState('');
   const [showEnrollForm, setShowEnrollForm] = useState(false);
 
-  // Temporary input states for EV wake-up settings to prevent periodic poll overwrites while typing
-  const [tempWakeupTarget, setTempWakeupTarget] = useState<Record<string, string>>({});
-  const [tempWakeupHeaders, setTempWakeupHeaders] = useState<Record<string, string>>({});
+  // Temporary input states for EV charging automation settings to prevent periodic poll overwrites while typing
+  const [tempAutomationTarget, setTempAutomationTarget] = useState<Record<string, string>>({});
+  const [tempAutomationHeaders, setTempAutomationHeaders] = useState<Record<string, string>>({});
 
   // 1. Fetch Metadata (Locations, Devices, and Releases)
   const fetchMetadata = async () => {
@@ -956,7 +960,7 @@ export default function App() {
     }
   };
 
-  const handleUpdateWakeupSettings = async (
+  const handleUpdateAutomationSettings = async (
     locationId: string,
     settings: { enabled: boolean; type: string; target: string; headers: string }
   ) => {
@@ -968,7 +972,11 @@ export default function App() {
               ev_wakeup_enabled: settings.enabled ? 1 : 0,
               ev_wakeup_type: settings.type,
               ev_wakeup_target: settings.target,
-              ev_wakeup_headers: settings.headers
+              ev_wakeup_headers: settings.headers,
+              ev_automation_enabled: settings.enabled ? 1 : 0,
+              ev_automation_type: settings.type,
+              ev_automation_target: settings.target,
+              ev_automation_headers: settings.headers
             }
           : l
       )
@@ -976,38 +984,38 @@ export default function App() {
 
     if (isBackendConnected) {
       try {
-        const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/wakeup`, {
+        const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/automation`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(settings)
         });
         if (!res.ok) {
           const errData = await res.json();
-          console.error('Failed to save EV wake-up settings:', errData.error);
+          console.error('Failed to save EV charging automation settings:', errData.error);
         } else {
-          setLogs(prev => [`[SYSTEM] Updated EV wake-up settings for location: ${locationId}`, ...prev]);
-          setTempWakeupTarget(prev => {
+          setLogs(prev => [`[SYSTEM] Updated EV charging automation settings for location: ${locationId}`, ...prev]);
+          setTempAutomationTarget(prev => {
             const copy = { ...prev };
             delete copy[locationId];
             return copy;
           });
-          setTempWakeupHeaders(prev => {
+          setTempAutomationHeaders(prev => {
             const copy = { ...prev };
             delete copy[locationId];
             return copy;
           });
         }
       } catch (err) {
-        console.error('Failed to connect to backend to save EV wake-up settings:', err);
+        console.error('Failed to connect to backend to save EV charging automation settings:', err);
       }
     } else {
-      setLogs(prev => [`[MOCK] Updated EV wake-up settings for location: ${locationId} (Local Only)`, ...prev]);
-      setTempWakeupTarget(prev => {
+      setLogs(prev => [`[MOCK] Updated EV charging automation settings for location: ${locationId} (Local Only)`, ...prev]);
+      setTempAutomationTarget(prev => {
         const copy = { ...prev };
         delete copy[locationId];
         return copy;
       });
-      setTempWakeupHeaders(prev => {
+      setTempAutomationHeaders(prev => {
         const copy = { ...prev };
         delete copy[locationId];
         return copy;
@@ -1015,26 +1023,26 @@ export default function App() {
     }
   };
 
-  const handleTestWakeup = async (locationId: string) => {
+  const handleTestAutomation = async (locationId: string) => {
     if (!isBackendConnected) {
-      alert('[MOCK] EV Wake-up test triggered (Standalone Mock Mode - check console logs)');
-      setLogs(prev => [`[MOCK EV WAKEUP TEST] Triggered locally for ${locationId}`, ...prev]);
+      alert('[MOCK] EV Charging automation test triggered (Standalone Mock Mode - check console logs)');
+      setLogs(prev => [`[MOCK EV AUTOMATION TEST] Triggered locally for ${locationId}`, ...prev]);
       return;
     }
 
     try {
-      const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/wakeup/test`, {
+      const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/automation/test`, {
         method: 'POST'
       });
       if (res.ok) {
-        alert('EV wake-up test triggered successfully! Check the system logs for status.');
+        alert('EV charging automation test triggered successfully! Check the system logs for status.');
       } else {
         const errData = await res.json();
         alert(`Test trigger failed: ${errData.error || 'Unknown error'}`);
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to connect to backend to trigger wake-up test.');
+      alert('Failed to connect to backend to trigger charging automation test.');
     }
   };
 
@@ -1789,121 +1797,139 @@ export default function App() {
                         </select>
                       </div>
 
-                      {/* EV Wake-up Integration Control */}
-                      <div className="ev-wakeup-control" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>EV Wake-up Integration</span>
-                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={loc.ev_wakeup_enabled === 1}
-                              onChange={e => handleUpdateWakeupSettings(loc.id, {
-                                enabled: e.target.checked,
-                                type: loc.ev_wakeup_type || 'webhook',
-                                target: tempWakeupTarget[loc.id] !== undefined ? tempWakeupTarget[loc.id] : (loc.ev_wakeup_target || ''),
-                                headers: tempWakeupHeaders[loc.id] !== undefined ? tempWakeupHeaders[loc.id] : (loc.ev_wakeup_headers || '')
-                              })}
-                              style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Enabled</span>
-                          </label>
-                        </div>
+                      {/* EV Charging Automation Control */}
+                      {(() => {
+                        const autoEnabled = loc.ev_automation_enabled !== undefined ? loc.ev_automation_enabled === 1 : loc.ev_wakeup_enabled === 1;
+                        const autoType = loc.ev_automation_type || loc.ev_wakeup_type || 'webhook';
+                        const autoTarget = loc.ev_automation_target || loc.ev_wakeup_target || '';
+                        const autoHeaders = loc.ev_automation_headers || loc.ev_wakeup_headers || '';
 
-                        {loc.ev_wakeup_enabled === 1 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-                            <div>
-                              <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Wake-up Type:</label>
-                              <select
-                                className="form-input"
-                                style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem' }}
-                                value={loc.ev_wakeup_type || 'webhook'}
-                                onChange={e => handleUpdateWakeupSettings(loc.id, {
-                                  enabled: true,
-                                  type: e.target.value,
-                                  target: tempWakeupTarget[loc.id] !== undefined ? tempWakeupTarget[loc.id] : (loc.ev_wakeup_target || ''),
-                                  headers: tempWakeupHeaders[loc.id] !== undefined ? tempWakeupHeaders[loc.id] : (loc.ev_wakeup_headers || '')
-                                })}
-                              >
-                                <option value="webhook">Webhook (HTTP POST)</option>
-                                <option value="ntfy">ntfy Notification Service</option>
-                                <option value="script">Local Shell Script / CLI</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                {loc.ev_wakeup_type === 'script'
-                                  ? 'Local Script / CLI Command:'
-                                  : loc.ev_wakeup_type === 'ntfy'
-                                  ? 'ntfy Topic URL:'
-                                  : 'Webhook Endpoint URL:'}
-                              </label>
-                              <input
-                                type="text"
-                                className="form-input"
-                                style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem' }}
-                                placeholder={
-                                  loc.ev_wakeup_type === 'script'
-                                    ? 'e.g. myskoda climatisation start --vin ...'
-                                    : loc.ev_wakeup_type === 'ntfy'
-                                    ? `e.g. https://ntfy.sh/lunagrid-${loc.id || 'wakeup'}-${getStableSuffix(loc.id || '')}`
-                                    : 'e.g. http://192.168.1.50:8123/api/webhook/...'
-                                }
-                                value={tempWakeupTarget[loc.id] !== undefined ? tempWakeupTarget[loc.id] : (loc.ev_wakeup_target || '')}
-                                onChange={e => setTempWakeupTarget(prev => ({ ...prev, [loc.id]: e.target.value }))}
-                                onBlur={() => handleUpdateWakeupSettings(loc.id, {
-                                  enabled: true,
-                                  type: loc.ev_wakeup_type || 'webhook',
-                                  target: tempWakeupTarget[loc.id] !== undefined ? tempWakeupTarget[loc.id] : (loc.ev_wakeup_target || ''),
-                                  headers: tempWakeupHeaders[loc.id] !== undefined ? tempWakeupHeaders[loc.id] : (loc.ev_wakeup_headers || '')
-                                })}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') {
-                                    e.currentTarget.blur();
-                                  }
-                                }}
-                              />
-                            </div>
-
-                            {(loc.ev_wakeup_type === 'webhook' || loc.ev_wakeup_type === 'ntfy') && (
-                              <div>
-                                <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                  {loc.ev_wakeup_type === 'ntfy'
-                                    ? 'Custom HTTP Headers (JSON, optional - e.g. custom Priority/Tags):'
-                                    : 'Custom HTTP Headers (JSON, optional):'}
-                                </label>
-                                <textarea
-                                  className="form-input"
-                                  style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem', fontFamily: 'monospace', height: '50px', resize: 'vertical' }}
-                                  placeholder={
-                                    loc.ev_wakeup_type === 'ntfy'
-                                      ? 'e.g. {"Priority": "urgent", "Tags": "zap,battery"}'
-                                      : 'e.g. {"Authorization": "Bearer tok..."}'
-                                  }
-                                  value={tempWakeupHeaders[loc.id] !== undefined ? tempWakeupHeaders[loc.id] : (loc.ev_wakeup_headers || '')}
-                                  onChange={e => setTempWakeupHeaders(prev => ({ ...prev, [loc.id]: e.target.value }))}
-                                  onBlur={() => handleUpdateWakeupSettings(loc.id, {
-                                    enabled: true,
-                                    type: loc.ev_wakeup_type || 'webhook',
-                                    target: tempWakeupTarget[loc.id] !== undefined ? tempWakeupTarget[loc.id] : (loc.ev_wakeup_target || ''),
-                                    headers: tempWakeupHeaders[loc.id] !== undefined ? tempWakeupHeaders[loc.id] : (loc.ev_wakeup_headers || '')
+                        return (
+                          <div className="ev-automation-control" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                              <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>EV Charging Automation</span>
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={autoEnabled}
+                                  onChange={e => handleUpdateAutomationSettings(loc.id, {
+                                    enabled: e.target.checked,
+                                    type: autoType,
+                                    target: tempAutomationTarget[loc.id] !== undefined ? tempAutomationTarget[loc.id] : autoTarget,
+                                    headers: tempAutomationHeaders[loc.id] !== undefined ? tempAutomationHeaders[loc.id] : autoHeaders
                                   })}
+                                  style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
                                 />
+                                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Enabled</span>
+                              </label>
+                            </div>
+
+                            {autoEnabled && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Automation Type:</label>
+                                  <select
+                                    className="form-input"
+                                    style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem' }}
+                                    value={autoType}
+                                    onChange={e => handleUpdateAutomationSettings(loc.id, {
+                                      enabled: true,
+                                      type: e.target.value,
+                                      target: tempAutomationTarget[loc.id] !== undefined ? tempAutomationTarget[loc.id] : autoTarget,
+                                      headers: tempAutomationHeaders[loc.id] !== undefined ? tempAutomationHeaders[loc.id] : autoHeaders
+                                    })}
+                                  >
+                                    <option value="webhook">Webhook (HTTP POST on both transitions)</option>
+                                    <option value="ntfy">ntfy Notification Service (ON/OFF notification)</option>
+                                    <option value="script">Local Shell Script / CLI (run on both transitions)</option>
+                                    <option value="mqtt">MQTT Message Broker (publishes state payload)</option>
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                    {autoType === 'script'
+                                      ? 'Local Script / CLI Command (use {state} placeholder):'
+                                      : autoType === 'ntfy'
+                                      ? 'ntfy Topic URL:'
+                                      : autoType === 'mqtt'
+                                      ? 'MQTT Status Topic:'
+                                      : 'Webhook Endpoint URL:'}
+                                  </label>
+                                  <input
+                                    type="text"
+                                    className="form-input"
+                                    style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem' }}
+                                    placeholder={
+                                      autoType === 'script'
+                                        ? 'e.g. tools/handle_ev.sh {state}'
+                                        : autoType === 'ntfy'
+                                        ? `e.g. https://ntfy.sh/lunagrid-${loc.id || 'automation'}-${getStableSuffix(loc.id || '')}`
+                                        : autoType === 'mqtt'
+                                        ? 'e.g. evcc/charger/status'
+                                        : 'e.g. http://192.168.1.50:8123/api/webhook/...'
+                                    }
+                                    value={tempAutomationTarget[loc.id] !== undefined ? tempAutomationTarget[loc.id] : autoTarget}
+                                    onChange={e => setTempAutomationTarget(prev => ({ ...prev, [loc.id]: e.target.value }))}
+                                    onBlur={() => handleUpdateAutomationSettings(loc.id, {
+                                      enabled: true,
+                                      type: autoType,
+                                      target: tempAutomationTarget[loc.id] !== undefined ? tempAutomationTarget[loc.id] : autoTarget,
+                                      headers: tempAutomationHeaders[loc.id] !== undefined ? tempAutomationHeaders[loc.id] : autoHeaders
+                                    })}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') {
+                                        e.currentTarget.blur();
+                                      }
+                                    }}
+                                  />
+                                </div>
+
+                                {(autoType === 'webhook' || autoType === 'ntfy' || autoType === 'mqtt') && (
+                                  <div>
+                                    <label style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                      {autoType === 'ntfy'
+                                        ? 'Custom HTTP Headers (JSON, optional):'
+                                        : autoType === 'mqtt'
+                                        ? 'Custom MQTT Payloads (JSON, optional - e.g. {"on": "C", "off": "A"}):'
+                                        : 'Custom HTTP Headers (JSON, optional):'}
+                                    </label>
+                                    <textarea
+                                      className="form-input"
+                                      style={{ width: '100%', padding: '0.25rem', fontSize: '0.8rem', marginTop: '0.2rem', fontFamily: 'monospace', height: '50px', resize: 'vertical' }}
+                                      placeholder={
+                                        autoType === 'ntfy'
+                                          ? 'e.g. {"Priority": "urgent", "Tags": "zap,battery"}'
+                                          : autoType === 'mqtt'
+                                          ? 'e.g. {"on": "C", "off": "A"}'
+                                          : 'e.g. {"Authorization": "Bearer tok..."}'
+                                      }
+                                      value={tempAutomationHeaders[loc.id] !== undefined ? tempAutomationHeaders[loc.id] : autoHeaders}
+                                      onChange={e => setTempAutomationHeaders(prev => ({ ...prev, [loc.id]: e.target.value }))}
+                                      onBlur={() => handleUpdateAutomationSettings(loc.id, {
+                                        enabled: true,
+                                        type: autoType,
+                                        target: tempAutomationTarget[loc.id] !== undefined ? tempAutomationTarget[loc.id] : autoTarget,
+                                        headers: tempAutomationHeaders[loc.id] !== undefined ? tempAutomationHeaders[loc.id] : autoHeaders
+                                      })}
+                                    />
+                                  </div>
+                                )}
+
+                                <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.25rem' }}>
+                                  <button 
+                                    className="btn-secondary" 
+                                    style={{ width: '100%', padding: '0.3rem', fontSize: '0.8rem', background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.2)', color: '#10b981' }}
+                                    onClick={() => handleTestAutomation(loc.id)}
+                                  >
+                                    Test Automation (ON)
+                                  </button>
+                                </div>
                               </div>
                             )}
-
-                            <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.25rem' }}>
-                              <button 
-                                className="btn-secondary" 
-                                style={{ width: '100%', padding: '0.3rem', fontSize: '0.8rem', background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.2)', color: '#10b981' }}
-                                onClick={() => handleTestWakeup(loc.id)}
-                              >
-                                Test Wake-up
-                              </button>
-                            </div>
                           </div>
-                        )}
-                      </div>
+                        );
+                      })()}
                     </div>
                   );
                 })

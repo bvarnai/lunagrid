@@ -40,11 +40,11 @@ This project is structured as a monorepo containing all software layers, physica
 Explore our design and guide files:
 - **[Electrical Safety & Risk Review](file:///home/bvarnai/workspace/lunagrid/docs/electrical_safety_review.md):** Critical engineering review of mains hazards, galvanic isolation failures, overcurrent protection, and code compliance.
 - **[Project Plan & Specification](file:///home/bvarnai/workspace/lunagrid/docs/lunagrid_project_plan.md):** Complete specifications including the hardware contactor wiring and cloud architecture.
-- **[Firmware Development Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_development.md):** Environment setups, WSL2 port authorization, and PlatformIO flashing commands.
-- **[Firmware Release & Rollout Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_release_guide.md):** Step-by-step firmware build, Nginx hosting, portal registration, and remote update commands.
-- **[EV Wake-up Integration Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/ev_wakeup_integration.md):** Configuration steps for local scripts or Home Assistant webhooks to wake sleeping EVs.
-- **[EVCC Integration & Setup Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/evcc_integration.md):** Configuration templates for EVCC smart charging controller and dummy charger wallbox bindings.
-- **[ESPHome USB Serial Quickstart](file:///c:/Users/bvarnai/workspace/lunagrid/docs/usb_serial_quickstart.md):** Standalone reference file for basic USB binding and ESPHome setup.
+- **[Firmware Development Guide](file:///home/bvarnai/workspace/lunagrid/docs/firmware_development.md):** Environment setups, WSL2 port authorization, and PlatformIO flashing commands.
+- **[Firmware Release & Rollout Guide](file:///home/bvarnai/workspace/lunagrid/docs/firmware_release_guide.md):** Step-by-step firmware build, Nginx hosting, portal registration, and remote update commands.
+- **[EV Charging Automation Guide](file:///home/bvarnai/workspace/lunagrid/docs/ev_charging_automation.md):** Configuration steps for local scripts, webhooks, or MQTT to automate EV charging schedules.
+- **[EVCC Integration & Setup Guide](file:///home/bvarnai/workspace/lunagrid/docs/evcc_integration.md):** Configuration templates for EVCC smart charging controller and dummy charger wallbox bindings.
+- **[ESPHome USB Serial Quickstart](file:///home/bvarnai/workspace/lunagrid/docs/usb_serial_quickstart.md):** Standalone reference file for basic USB binding and ESPHome setup.
 
 ---
 
