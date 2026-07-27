@@ -12,6 +12,7 @@ export interface Location {
   name: string;
   timezone: string;
   created_at?: string;
+  notifications_disabled?: number;
   ev_wakeup_enabled?: number;
   ev_wakeup_type?: string;
   ev_wakeup_target?: string;
@@ -118,6 +119,7 @@ export const initDb = async (): Promise<void> => {
   await addColumnSafe('ev_automation_type', 'TEXT DEFAULT \'webhook\'');
   await addColumnSafe('ev_automation_target', 'TEXT DEFAULT \'\'');
   await addColumnSafe('ev_automation_headers', 'TEXT DEFAULT \'\'');
+  await addColumnSafe('notifications_disabled', 'INTEGER DEFAULT 0');
 
   // Migrate existing data from ev_wakeup_* to ev_automation_* if they contain values
   try {
@@ -240,6 +242,16 @@ export const updateLocationEvAutomation = async (
   await runQuery(
     'UPDATE locations SET ev_wakeup_enabled = ?, ev_wakeup_type = ?, ev_wakeup_target = ?, ev_wakeup_headers = ?, ev_automation_enabled = ?, ev_automation_type = ?, ev_automation_target = ?, ev_automation_headers = ? WHERE id = ?',
     [enabled ? 1 : 0, type, target, headers, enabled ? 1 : 0, type, target, headers, id]
+  );
+};
+
+export const updateLocationNotificationsDisabled = async (
+  id: string,
+  disabled: boolean
+): Promise<void> => {
+  await runQuery(
+    'UPDATE locations SET notifications_disabled = ? WHERE id = ?',
+    [disabled ? 1 : 0, id]
   );
 };
 

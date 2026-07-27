@@ -33,6 +33,10 @@ Under the **Locations & Devices** tab, each location card exposes an **EV Chargi
    - For webhooks and ntfy, enter the target URL.
    - For MQTT, enter the topic name (e.g. `evcc/charger/status`).
    - For scripts, enter the shell command. Use the `{state}` placeholder which will be replaced with `"on"` or `"off"` dynamically.
+3. **Car Away Toggle Switch**:
+   - Located prominently on the **Dashboard** (Selected Location Panel & Presence Banner) and under **Locations & Devices**.
+   - Enables **Car Away** mode when the vehicle is absent from the location.
+   - When **Car Away** is ON, automated B-tariff state transition notifications and wakeups are silenced. Turning it OFF (Car Present) resumes notifications. Manual test triggers remain available for testing anytime.
 4. **Custom Payloads / Headers (JSON)**:
    - **Webhooks/ntfy**: Custom headers (e.g. `{"Authorization": "Bearer token"}`).
    - **MQTT**: Custom state payloads mapped as `{"on": "C", "off": "A"}`. If omitted, defaults to `"C"` and `"A"`.

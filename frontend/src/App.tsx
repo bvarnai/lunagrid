@@ -4,6 +4,7 @@ interface Location {
   id: string;
   name: string;
   timezone: string;
+  notifications_disabled?: number;
   ev_wakeup_enabled?: number;
   ev_wakeup_type?: string;
   ev_wakeup_target?: string;
@@ -977,6 +978,48 @@ export default function App() {
     setEditingDeviceId(null);
   };
 
+  // Toggle Car Away (notification silence) state for a location
+  const handleToggleNotifications = async (locationId: string, currentDisabled: boolean) => {
+    const newDisabled = !currentDisabled;
+    const targetLoc = locations.find(l => l.id === locationId);
+    const locName = targetLoc?.name || locationId;
+
+    if (isBackendConnected) {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/notifications`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ disabled: newDisabled })
+        });
+
+        if (res.ok) {
+          setLocations(prev =>
+            prev.map(l => l.id === locationId ? { ...l, notifications_disabled: newDisabled ? 1 : 0 } : l)
+          );
+          setLogs(prev => [
+            `[SYSTEM] Location "${locName}" Car Away set to ${newDisabled ? 'ON (Notifications Silenced)' : 'OFF (Car Present)'}.`,
+            ...prev
+          ]);
+        } else {
+          const errData = await res.json();
+          alert(`Failed to update Car Away status: ${errData.error || res.statusText}`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to update Car Away status due to network error');
+      }
+    } else {
+      // Mock update locally
+      setLocations(prev =>
+        prev.map(l => l.id === locationId ? { ...l, notifications_disabled: newDisabled ? 1 : 0 } : l)
+      );
+      setLogs(prev => [
+        `[MOCK] Location "${locName}" Car Away set to ${newDisabled ? 'ON (Notifications Silenced)' : 'OFF (Car Present)'}.`,
+        ...prev
+      ]);
+    }
+  };
+
   // Delete a location
   const handleDeleteLocation = async (id: string) => {
     // Check if there is any device currently mapped to this location
@@ -1428,34 +1471,185 @@ export default function App() {
             </div>
           )}
 
-          {/* Quick Select Location */}
-          <div className="card col-12" style={{ padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h3 style={{ fontSize: '1.1rem' }}>Selected Location Panel</h3>
+          {/* Quick Select Location & Car Away Toggle Panel */}
+          <div className="card col-12" style={{ padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Selected Location Panel</h3>
+                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Select location and toggle Car Away mode to pause notifications</span>
+              </div>
             </div>
-            <select 
-              className="form-input" 
-              style={{ 
-                width: 'auto', 
-                minWidth: '220px', 
-                maxWidth: '350px', 
-                padding: '0.35rem 2rem 0.35rem 0.75rem', 
-                textOverflow: 'ellipsis', 
-                overflow: 'hidden', 
-                whiteSpace: 'nowrap' 
-              }} 
-              value={selectedLocationId} 
-              onChange={e => setSelectedLocationId(e.target.value)}
-            >
-              {locations.length === 0 ? (
-                <option value="">No Locations Configured</option>
-              ) : (
-                locations.map(l => (
-                  <option key={l.id} value={l.id}>{l.name}</option>
-                ))
-              )}
-            </select>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
+              {(() => {
+                const currentLoc = locations.find(l => l.id === selectedLocationId);
+                if (!currentLoc) return null;
+                const isCarAway = Boolean(currentLoc.notifications_disabled);
+                return (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    padding: '0.4rem 0.9rem',
+                    borderRadius: '0.75rem',
+                    border: '1px solid rgba(255, 255, 255, 0.08)'
+                  }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isCarAway ? '#f59e0b' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      🚗 Car Away
+                    </span>
+
+                    {/* Toggle Switch */}
+                    <button
+                      role="switch"
+                      aria-checked={isCarAway}
+                      style={{
+                        position: 'relative',
+                        width: '56px',
+                        height: '28px',
+                        borderRadius: '14px',
+                        border: 'none',
+                        background: isCarAway ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(255, 255, 255, 0.15)',
+                        cursor: 'pointer',
+                        transition: 'all 0.25s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '2px',
+                        boxShadow: isCarAway ? '0 0 10px rgba(245, 158, 11, 0.3)' : 'none'
+                      }}
+                      onClick={() => handleToggleNotifications(currentLoc.id, isCarAway)}
+                      title={isCarAway ? "Car Away is ON: Notifications & wakeups silenced" : "Car Away is OFF: Notifications & wakeups active"}
+                    >
+                      <div style={{
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        background: '#fff',
+                        transform: isCarAway ? 'translateX(28px)' : 'translateX(0px)',
+                        transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.7rem',
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
+                      }}>
+                        {isCarAway ? '🚗' : '🏠'}
+                      </div>
+                    </button>
+
+                    <span style={{
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      color: isCarAway ? '#f59e0b' : '#10b981',
+                      minWidth: '75px'
+                    }}>
+                      {isCarAway ? 'ON (Muted)' : 'OFF (Active)'}
+                    </span>
+                  </div>
+                );
+              })()}
+
+              <select 
+                className="form-input" 
+                style={{ 
+                  width: 'auto', 
+                  minWidth: '220px', 
+                  maxWidth: '350px', 
+                  padding: '0.35rem 2rem 0.35rem 0.75rem', 
+                  textOverflow: 'ellipsis', 
+                  overflow: 'hidden', 
+                  whiteSpace: 'nowrap' 
+                }} 
+                value={selectedLocationId} 
+                onChange={e => setSelectedLocationId(e.target.value)}
+              >
+                {locations.length === 0 ? (
+                  <option value="">No Locations Configured</option>
+                ) : (
+                  locations.map(l => (
+                    <option key={l.id} value={l.id}>{l.name} {l.notifications_disabled ? '🚗 (Car Away)' : ''}</option>
+                  ))
+                )}
+              </select>
+            </div>
           </div>
+
+          {/* Vehicle Presence & Car Away Banner */}
+          {selectedLocationId && (() => {
+            const currentLoc = locations.find(l => l.id === selectedLocationId);
+            if (!currentLoc) return null;
+            const isCarAway = Boolean(currentLoc.notifications_disabled);
+
+            return (
+              <div className="card col-12" style={{
+                background: isCarAway 
+                  ? 'linear-gradient(to right, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.03))'
+                  : 'linear-gradient(to right, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.03))',
+                border: isCarAway ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(16, 185, 129, 0.2)',
+                padding: '1.25rem 1.5rem',
+                borderRadius: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '1rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div style={{
+                    fontSize: '2rem',
+                    background: isCarAway ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                    width: '50px',
+                    height: '50px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    {isCarAway ? '🚗' : '🏠'}
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                        {isCarAway ? 'Car Away Mode: ON' : 'Car Present: Notifications Active'}
+                      </h4>
+                      <span style={{
+                        fontSize: '0.75rem',
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: '0.4rem',
+                        fontWeight: 600,
+                        background: isCarAway ? '#f59e0b' : '#10b981',
+                        color: '#080c14'
+                      }}>
+                        {isCarAway ? 'NOTIFICATIONS MUTED' : 'NOTIFICATIONS ACTIVE'}
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>
+                      {isCarAway 
+                        ? `The vehicle is away from "${currentLoc.name}". Tariff notifications and EV wakeups are silenced.` 
+                        : `The vehicle is present at "${currentLoc.name}". Tariff state changes will trigger notifications normally.`}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  className="btn-action"
+                  style={{
+                    background: isCarAway ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                    color: '#080c14',
+                    fontWeight: 600,
+                    padding: '0.5rem 1.2rem',
+                    borderRadius: '0.5rem',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => handleToggleNotifications(currentLoc.id, isCarAway)}
+                >
+                  {isCarAway ? '⚡ Car Returned (Turn OFF)' : '🚗 Car Away (Turn ON)'}
+                </button>
+              </div>
+            );
+          })()}
 
           {/* Current Grid State Hero */}
           <div className="card col-12 status-hero">
@@ -1845,10 +2039,38 @@ export default function App() {
                     <div key={loc.id} className="location-mgmt-card">
                       <div className="location-mgmt-header">
                         <div>
-                          <strong>{loc.name}</strong>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <strong>{loc.name}</strong>
+                            <span style={{
+                              fontSize: '0.7rem',
+                              padding: '0.1rem 0.4rem',
+                              borderRadius: '0.3rem',
+                              fontWeight: 600,
+                              background: loc.notifications_disabled ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                              color: loc.notifications_disabled ? '#f59e0b' : '#10b981',
+                              border: loc.notifications_disabled ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
+                            }}>
+                              {loc.notifications_disabled ? '🚗 Car Away: ON' : '🏠 Car Present'}
+                            </span>
+                          </div>
                           <div style={{ fontSize: '0.8rem', color: '#64748b' }}>ID: {loc.id} | TZ: {loc.timezone}</div>
                         </div>
                         <div style={{ display: 'flex', gap: '0.35rem' }}>
+                          <button 
+                            className="btn-secondary" 
+                            style={{ 
+                              padding: '0.25rem 0.65rem', 
+                              fontSize: '0.8rem',
+                              color: loc.notifications_disabled ? '#10b981' : '#f59e0b',
+                              borderColor: loc.notifications_disabled ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)',
+                              background: loc.notifications_disabled ? 'rgba(16, 185, 129, 0.05)' : 'rgba(245, 158, 11, 0.05)',
+                              fontWeight: 600
+                            }} 
+                            title={loc.notifications_disabled ? "Turn OFF Car Away mode (Car is present)" : "Turn ON Car Away mode (Car is absent)"}
+                            onClick={() => handleToggleNotifications(loc.id, Boolean(loc.notifications_disabled))}
+                          >
+                            {loc.notifications_disabled ? '⚡ Car Returned' : '🚗 Car Away'}
+                          </button>
                           <button className="btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }} onClick={() => {
                             setEditingLocId(loc.id);
                             setEditLocName(loc.name);

@@ -25,6 +25,7 @@ import {
   getLocationById,
   updateLocationEvWakeup,
   updateLocationEvAutomation,
+  updateLocationNotificationsDisabled,
   getAllAutomations,
   getAutomationsByLocationId,
   getAutomationById,
@@ -143,6 +144,36 @@ app.put('/api/locations/:id', async (req, res) => {
     res.json({ status: 'success', location: { id, name, timezone } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update location' });
+  }
+});
+
+// Toggle notifications / disarm status for a location
+app.patch('/api/locations/:id/notifications', async (req, res) => {
+  const id = req.params.id;
+  const disabled = req.body.disabled !== undefined 
+    ? Boolean(req.body.disabled) 
+    : Boolean(req.body.notifications_disabled);
+
+  try {
+    const loc = await getLocationById(id);
+    if (!loc) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+    await updateLocationNotificationsDisabled(id, disabled);
+    const statusText = disabled ? 'Car Away ON (Notifications Silenced)' : 'Car Away OFF (Car Present)';
+    const msg = `[SYSTEM] Location "${loc.name}" (${id}) set to ${statusText}.`;
+    console.log(msg);
+    addLog(msg);
+
+    res.json({
+      status: 'success',
+      locationId: id,
+      notifications_disabled: disabled ? 1 : 0,
+      car_away: disabled,
+      message: statusText
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update notification status' });
   }
 });
 
@@ -567,6 +598,13 @@ async function triggerEvAutomation(locationId: string, state: 'on' | 'off', isMa
     if (!location) {
       console.warn(`[EV AUTOMATION] Location ${locationId} not found.`);
       return { success: false, error: 'Location not found' };
+    }
+
+    if (location.notifications_disabled && !isManualTest) {
+      const disarmedMsg = `[EV AUTOMATION] Location "${location.name}" (${locationId}) is in "Car Away" mode. Skipping notification dispatch.`;
+      console.log(disarmedMsg);
+      addLog(disarmedMsg);
+      return { success: true, skipped: true, reason: 'Car Away mode enabled' };
     }
 
     const automations = await getAutomationsByLocationId(locationId);
