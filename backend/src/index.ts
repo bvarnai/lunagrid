@@ -26,6 +26,8 @@ import {
   updateLocationEvWakeup,
   updateLocationEvAutomation,
   updateLocationNotificationsDisabled,
+  updateLocationCarAwaySchedule,
+  isLocationCarAwayActive,
   getAllAutomations,
   getAutomationsByLocationId,
   getAutomationById,
@@ -150,17 +152,39 @@ app.put('/api/locations/:id', async (req, res) => {
 // Toggle notifications / disarm status for a location
 app.patch('/api/locations/:id/notifications', async (req, res) => {
   const id = req.params.id;
-  const disabled = req.body.disabled !== undefined 
-    ? Boolean(req.body.disabled) 
-    : Boolean(req.body.notifications_disabled);
 
   try {
     const loc = await getLocationById(id);
     if (!loc) {
       return res.status(404).json({ error: 'Location not found' });
     }
-    await updateLocationNotificationsDisabled(id, disabled);
-    const statusText = disabled ? 'Car Away ON (Notifications Silenced)' : 'Car Away OFF (Car Present)';
+
+    let val = 0;
+    if (req.body.override === 'auto' || req.body.notifications_disabled === 0) {
+      val = 0; // Clear manual override, revert to Auto schedule
+    } else if (req.body.override === 'on' || req.body.disabled === true || req.body.notifications_disabled === 1) {
+      val = 1; // Force Manual ON
+    } else if (req.body.override === 'off' || req.body.disabled === false || req.body.notifications_disabled === -1) {
+      // If turning OFF while schedule is active, set forced OFF (-1), otherwise 0
+      const currentActive = isLocationCarAwayActive(loc);
+      val = (currentActive.reason === 'schedule' || loc.car_away_schedule_enabled) ? -1 : 0;
+    } else if (typeof req.body.notifications_disabled === 'number') {
+      val = req.body.notifications_disabled;
+    }
+
+    await updateLocationNotificationsDisabled(id, val);
+    const updatedLoc = await getLocationById(id);
+    const statusInfo = updatedLoc ? isLocationCarAwayActive(updatedLoc) : { active: false, reason: 'none' };
+
+    let statusText = 'Car Away OFF (Car Present)';
+    if (statusInfo.active) {
+      statusText = statusInfo.reason === 'manual_on' 
+        ? 'Car Away ON (Manual Override)' 
+        : 'Car Away ON (Scheduled)';
+    } else if (statusInfo.reason === 'manual_off') {
+      statusText = 'Car Away OFF (Manual Override)';
+    }
+
     const msg = `[SYSTEM] Location "${loc.name}" (${id}) set to ${statusText}.`;
     console.log(msg);
     addLog(msg);
@@ -168,12 +192,47 @@ app.patch('/api/locations/:id/notifications', async (req, res) => {
     res.json({
       status: 'success',
       locationId: id,
-      notifications_disabled: disabled ? 1 : 0,
-      car_away: disabled,
+      notifications_disabled: val,
+      car_away_active: statusInfo.active,
+      reason: statusInfo.reason,
       message: statusText
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update notification status' });
+  }
+});
+
+// Update Car Away daily schedule for a location
+app.patch('/api/locations/:id/schedule', async (req, res) => {
+  const id = req.params.id;
+  const { enabled, from, to } = req.body;
+  try {
+    const loc = await getLocationById(id);
+    if (!loc) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+    const fromTime = from || '08:00';
+    const toTime = to || '17:00';
+    await updateLocationCarAwaySchedule(id, Boolean(enabled), fromTime, toTime);
+    
+    const updatedLoc = await getLocationById(id);
+    const statusInfo = updatedLoc ? isLocationCarAwayActive(updatedLoc) : { active: false, reason: 'none' };
+
+    const msg = `[SYSTEM] Location "${loc.name}" (${id}) Car Away schedule set to ${enabled ? 'ENABLED' : 'DISABLED'} (${fromTime} - ${toTime}).`;
+    console.log(msg);
+    addLog(msg);
+
+    res.json({
+      status: 'success',
+      locationId: id,
+      car_away_schedule_enabled: enabled ? 1 : 0,
+      car_away_schedule_from: fromTime,
+      car_away_schedule_to: toTime,
+      car_away_active: statusInfo.active,
+      reason: statusInfo.reason
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update schedule' });
   }
 });
 
@@ -600,11 +659,15 @@ async function triggerEvAutomation(locationId: string, state: 'on' | 'off', isMa
       return { success: false, error: 'Location not found' };
     }
 
-    if (location.notifications_disabled && !isManualTest) {
-      const disarmedMsg = `[EV AUTOMATION] Location "${location.name}" (${locationId}) is in "Car Away" mode. Skipping notification dispatch.`;
+    const carAwayStatus = isLocationCarAwayActive(location);
+    if (carAwayStatus.active && !isManualTest) {
+      const reasonText = carAwayStatus.reason === 'schedule'
+        ? `Scheduled window (${location.car_away_schedule_from} - ${location.car_away_schedule_to})`
+        : 'Manual toggle';
+      const disarmedMsg = `[EV AUTOMATION] Location "${location.name}" (${locationId}) is in "Car Away" mode [${reasonText}]. Skipping notification dispatch.`;
       console.log(disarmedMsg);
       addLog(disarmedMsg);
-      return { success: true, skipped: true, reason: 'Car Away mode enabled' };
+      return { success: true, skipped: true, reason: `Car Away mode enabled (${reasonText})` };
     }
 
     const automations = await getAutomationsByLocationId(locationId);

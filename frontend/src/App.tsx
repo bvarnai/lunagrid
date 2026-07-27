@@ -5,6 +5,9 @@ interface Location {
   name: string;
   timezone: string;
   notifications_disabled?: number;
+  car_away_schedule_enabled?: number;
+  car_away_schedule_from?: string;
+  car_away_schedule_to?: string;
   ev_wakeup_enabled?: number;
   ev_wakeup_type?: string;
   ev_wakeup_target?: string;
@@ -979,8 +982,8 @@ export default function App() {
   };
 
   // Toggle Car Away (notification silence) state for a location
-  const handleToggleNotifications = async (locationId: string, currentDisabled: boolean) => {
-    const newDisabled = !currentDisabled;
+  const handleToggleNotifications = async (locationId: string, currentActive: boolean) => {
+    const newDisabled = !currentActive;
     const targetLoc = locations.find(l => l.id === locationId);
     const locName = targetLoc?.name || locationId;
 
@@ -993,11 +996,12 @@ export default function App() {
         });
 
         if (res.ok) {
+          const data = await res.json();
           setLocations(prev =>
-            prev.map(l => l.id === locationId ? { ...l, notifications_disabled: newDisabled ? 1 : 0 } : l)
+            prev.map(l => l.id === locationId ? { ...l, notifications_disabled: data.notifications_disabled } : l)
           );
           setLogs(prev => [
-            `[SYSTEM] Location "${locName}" Car Away set to ${newDisabled ? 'ON (Notifications Silenced)' : 'OFF (Car Present)'}.`,
+            `[SYSTEM] Location "${locName}" Car Away set to ${data.message || (newDisabled ? 'ON' : 'OFF')}.`,
             ...prev
           ]);
         } else {
@@ -1010,11 +1014,117 @@ export default function App() {
       }
     } else {
       // Mock update locally
+      const mockVal = newDisabled ? 1 : -1;
       setLocations(prev =>
-        prev.map(l => l.id === locationId ? { ...l, notifications_disabled: newDisabled ? 1 : 0 } : l)
+        prev.map(l => l.id === locationId ? { ...l, notifications_disabled: mockVal } : l)
       );
       setLogs(prev => [
-        `[MOCK] Location "${locName}" Car Away set to ${newDisabled ? 'ON (Notifications Silenced)' : 'OFF (Car Present)'}.`,
+        `[MOCK] Location "${locName}" Car Away set to ${newDisabled ? 'ON (Manual Override)' : 'OFF (Manual Override)'}.`,
+        ...prev
+      ]);
+    }
+  };
+
+  const handleResetScheduleOverride = async (locationId: string) => {
+    const targetLoc = locations.find(l => l.id === locationId);
+    const locName = targetLoc?.name || locationId;
+
+    if (isBackendConnected) {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/notifications`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ override: 'auto' })
+        });
+
+        if (res.ok) {
+          setLocations(prev =>
+            prev.map(l => l.id === locationId ? { ...l, notifications_disabled: 0 } : l)
+          );
+          setLogs(prev => [
+            `[SYSTEM] Location "${locName}" Car Away manual override cleared. Resumed Auto Schedule.`,
+            ...prev
+          ]);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      setLocations(prev =>
+        prev.map(l => l.id === locationId ? { ...l, notifications_disabled: 0 } : l)
+      );
+    }
+  };
+
+  const checkIsScheduleActive = (fromStr?: string, toStr?: string, tzStr?: string) => {
+    if (!fromStr || !toStr) return false;
+    try {
+      const tz = tzStr || 'Europe/Budapest';
+      const nowTimeStr = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+      const [nowH, nowM] = nowTimeStr.split(':').map(Number);
+      const nowMins = nowH * 60 + nowM;
+
+      const [fromH, fromM] = fromStr.split(':').map(Number);
+      const fromMins = fromH * 60 + fromM;
+
+      const [toH, toM] = toStr.split(':').map(Number);
+      const toMins = toH * 60 + toM;
+
+      if (fromMins <= toMins) {
+        return nowMins >= fromMins && nowMins < toMins;
+      } else {
+        return nowMins >= fromMins || nowMins < toMins;
+      }
+    } catch (err) {
+      return false;
+    }
+  };
+
+  const handleUpdateSchedule = async (locationId: string, enabled: boolean, from: string, to: string) => {
+    const targetLoc = locations.find(l => l.id === locationId);
+    const locName = targetLoc?.name || locationId;
+
+    if (isBackendConnected) {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/locations/${locationId}/schedule`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled, from, to })
+        });
+
+        if (res.ok) {
+          setLocations(prev =>
+            prev.map(l => l.id === locationId ? {
+              ...l,
+              car_away_schedule_enabled: enabled ? 1 : 0,
+              car_away_schedule_from: from,
+              car_away_schedule_to: to
+            } : l)
+          );
+          setLogs(prev => [
+            `[SYSTEM] Location "${locName}" Car Away schedule set to ${enabled ? 'ENABLED' : 'DISABLED'} (${from} - ${to}).`,
+            ...prev
+          ]);
+        } else {
+          const errData = await res.json();
+          alert(`Failed to update Car Away schedule: ${errData.error || res.statusText}`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to update schedule due to network error');
+      }
+    } else {
+      // Mock update locally
+      setLocations(prev =>
+        prev.map(l => l.id === locationId ? {
+          ...l,
+          car_away_schedule_enabled: enabled ? 1 : 0,
+          car_away_schedule_from: from,
+          car_away_schedule_to: to
+        } : l)
+      );
+      setLogs(prev => [
+        `[MOCK] Location "${locName}" Car Away schedule set to ${enabled ? 'ENABLED' : 'DISABLED'} (${from} - ${to}).`,
         ...prev
       ]);
     }
@@ -1506,53 +1616,146 @@ export default function App() {
           {selectedLocationId && (() => {
             const currentLoc = locations.find(l => l.id === selectedLocationId);
             if (!currentLoc) return null;
-            const isCarAway = Boolean(currentLoc.notifications_disabled);
+            const isManualOn = currentLoc.notifications_disabled === 1;
+            const isManualOff = currentLoc.notifications_disabled === -1;
+            const isScheduleEnabled = Boolean(currentLoc.car_away_schedule_enabled);
+            const scheduleFrom = currentLoc.car_away_schedule_from || '08:00';
+            const scheduleTo = currentLoc.car_away_schedule_to || '17:00';
+
+            const isScheduleActive = checkIsScheduleActive(scheduleFrom, scheduleTo, currentLoc.timezone);
+
+            let isCarAwayActive = false;
+            let statusText = '';
+
+            if (isManualOn) {
+              isCarAwayActive = true;
+              statusText = 'Car is away (Manual Override ON), notifications disabled.';
+            } else if (isManualOff) {
+              isCarAwayActive = false;
+              statusText = 'Car is home (Manual Override OFF), notifications enabled.';
+            } else if (isScheduleEnabled && isScheduleActive) {
+              isCarAwayActive = true;
+              statusText = `Car is away (Scheduled: ${scheduleFrom} - ${scheduleTo}), notifications disabled.`;
+            } else {
+              isCarAwayActive = false;
+              statusText = 'Car is home, notifications enabled.';
+            }
+
             return (
-              <div className="card col-12" style={{ padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Car Away</h3>
-                  <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                    {isCarAway ? 'Car is away, notifications disabled.' : 'Car is home, notifications enabled.'}
-                  </span>
+              <div className="card col-12" style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Car Away</h3>
+                      {(isManualOn || isManualOff) && isScheduleEnabled && (
+                        <button
+                          style={{
+                            border: 'none',
+                            background: 'rgba(245, 158, 11, 0.15)',
+                            color: '#f59e0b',
+                            padding: '0.15rem 0.5rem',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: 600
+                          }}
+                          onClick={() => handleResetScheduleOverride(currentLoc.id)}
+                          title="Reset manual override and resume automatic schedule"
+                        >
+                          ↺ Resume Schedule
+                        </button>
+                      )}
+                    </div>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      {statusText}
+                    </span>
+                  </div>
+
+                  {/* Toggle Switch (Manual Override) */}
+                  <button
+                    role="switch"
+                    aria-checked={isCarAwayActive}
+                    style={{
+                      position: 'relative',
+                      width: '56px',
+                      height: '28px',
+                      borderRadius: '14px',
+                      border: 'none',
+                      background: isCarAwayActive ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(255, 255, 255, 0.15)',
+                      cursor: 'pointer',
+                      transition: 'all 0.25s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '2px',
+                      boxShadow: isCarAwayActive ? '0 0 10px rgba(245, 158, 11, 0.3)' : 'none'
+                    }}
+                    onClick={() => handleToggleNotifications(currentLoc.id, isCarAwayActive)}
+                    title={isCarAwayActive ? "Click to set Car Home (notifications enabled)" : "Click to set Car Away (notifications disabled)"}
+                  >
+                    <div style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      background: '#fff',
+                      transform: isCarAwayActive ? 'translateX(28px)' : 'translateX(0px)',
+                      transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.7rem',
+                      boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
+                    }}>
+                      {isCarAwayActive ? '🚗' : '🏠'}
+                    </div>
+                  </button>
                 </div>
 
-                {/* Toggle Switch */}
-                <button
-                  role="switch"
-                  aria-checked={isCarAway}
-                  style={{
-                    position: 'relative',
-                    width: '56px',
-                    height: '28px',
-                    borderRadius: '14px',
-                    border: 'none',
-                    background: isCarAway ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(255, 255, 255, 0.15)',
-                    cursor: 'pointer',
-                    transition: 'all 0.25s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '2px',
-                    boxShadow: isCarAway ? '0 0 10px rgba(245, 158, 11, 0.3)' : 'none'
-                  }}
-                  onClick={() => handleToggleNotifications(currentLoc.id, isCarAway)}
-                  title={isCarAway ? "Car Away is ON: Notifications disabled" : "Car Away is OFF: Notifications enabled"}
-                >
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
-                    background: '#fff',
-                    transform: isCarAway ? 'translateX(28px)' : 'translateX(0px)',
-                    transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.7rem',
-                    boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
-                  }}>
-                    {isCarAway ? '🚗' : '🏠'}
+                {/* Daily Schedule Controls */}
+                <div style={{
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '1rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <input
+                      type="checkbox"
+                      id={`schedule_enable_${currentLoc.id}`}
+                      checked={isScheduleEnabled}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#f59e0b' }}
+                      onChange={e => handleUpdateSchedule(currentLoc.id, e.target.checked, scheduleFrom, scheduleTo)}
+                    />
+                    <label htmlFor={`schedule_enable_${currentLoc.id}`} style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94a3b8', cursor: 'pointer' }}>
+                      Daily Automatic Schedule
+                    </label>
                   </div>
-                </button>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', opacity: isScheduleEnabled ? 1 : 0.4, pointerEvents: isScheduleEnabled ? 'auto' : 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>From:</span>
+                      <input
+                        type="time"
+                        className="form-input"
+                        style={{ padding: '0.2rem 0.5rem', fontSize: '0.85rem', width: '100px' }}
+                        value={scheduleFrom}
+                        onChange={e => handleUpdateSchedule(currentLoc.id, isScheduleEnabled, e.target.value, scheduleTo)}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>To:</span>
+                      <input
+                        type="time"
+                        className="form-input"
+                        style={{ padding: '0.2rem 0.5rem', fontSize: '0.85rem', width: '100px' }}
+                        value={scheduleTo}
+                        onChange={e => handleUpdateSchedule(currentLoc.id, isScheduleEnabled, scheduleFrom, e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             );
           })()}

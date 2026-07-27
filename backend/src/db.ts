@@ -13,6 +13,9 @@ export interface Location {
   timezone: string;
   created_at?: string;
   notifications_disabled?: number;
+  car_away_schedule_enabled?: number;
+  car_away_schedule_from?: string;
+  car_away_schedule_to?: string;
   ev_wakeup_enabled?: number;
   ev_wakeup_type?: string;
   ev_wakeup_target?: string;
@@ -120,6 +123,9 @@ export const initDb = async (): Promise<void> => {
   await addColumnSafe('ev_automation_target', 'TEXT DEFAULT \'\'');
   await addColumnSafe('ev_automation_headers', 'TEXT DEFAULT \'\'');
   await addColumnSafe('notifications_disabled', 'INTEGER DEFAULT 0');
+  await addColumnSafe('car_away_schedule_enabled', 'INTEGER DEFAULT 0');
+  await addColumnSafe('car_away_schedule_from', 'TEXT DEFAULT \'08:00\'');
+  await addColumnSafe('car_away_schedule_to', 'TEXT DEFAULT \'17:00\'');
 
   // Migrate existing data from ev_wakeup_* to ev_automation_* if they contain values
   try {
@@ -247,12 +253,69 @@ export const updateLocationEvAutomation = async (
 
 export const updateLocationNotificationsDisabled = async (
   id: string,
-  disabled: boolean
+  disabled: number | boolean
 ): Promise<void> => {
+  const val = typeof disabled === 'number' ? disabled : (disabled ? 1 : 0);
   await runQuery(
     'UPDATE locations SET notifications_disabled = ? WHERE id = ?',
-    [disabled ? 1 : 0, id]
+    [val, id]
   );
+};
+
+export const updateLocationCarAwaySchedule = async (
+  id: string,
+  enabled: boolean,
+  fromTime: string,
+  toTime: string
+): Promise<void> => {
+  await runQuery(
+    'UPDATE locations SET car_away_schedule_enabled = ?, car_away_schedule_from = ?, car_away_schedule_to = ? WHERE id = ?',
+    [enabled ? 1 : 0, fromTime, toTime, id]
+  );
+};
+
+export const isLocationCarAwayActive = (location: Location): { active: boolean; reason: 'manual_on' | 'manual_off' | 'schedule' | 'none' } => {
+  // Explicit manual override ON (notifications_disabled === 1)
+  if (location.notifications_disabled === 1) {
+    return { active: true, reason: 'manual_on' };
+  }
+
+  // Explicit manual override OFF (notifications_disabled === -1)
+  if (location.notifications_disabled === -1) {
+    return { active: false, reason: 'manual_off' };
+  }
+
+  // Automatic Schedule evaluation (when notifications_disabled === 0)
+  if (location.car_away_schedule_enabled && location.car_away_schedule_from && location.car_away_schedule_to) {
+    try {
+      const tz = location.timezone || 'Europe/Budapest';
+      const nowStr = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+      const [nowH, nowM] = nowStr.split(':').map(Number);
+      const nowMins = nowH * 60 + nowM;
+
+      const [fromH, fromM] = location.car_away_schedule_from.split(':').map(Number);
+      const fromMins = fromH * 60 + fromM;
+
+      const [toH, toM] = location.car_away_schedule_to.split(':').map(Number);
+      const toMins = toH * 60 + toM;
+
+      let inWindow = false;
+      if (fromMins <= toMins) {
+        inWindow = nowMins >= fromMins && nowMins < toMins;
+      } else {
+        // Overnight window (e.g. 22:00 to 06:00)
+        inWindow = nowMins >= fromMins || nowMins < toMins;
+      }
+
+      if (inWindow) {
+        return { active: true, reason: 'schedule' };
+      }
+    } catch (err) {
+      console.error('[SCHEDULE] Error evaluating time range:', err);
+    }
+  }
+
+  return { active: false, reason: 'none' };
 };
 
 // Devices
