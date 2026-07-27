@@ -1739,7 +1739,7 @@ export default function App() {
                       <input
                         type="time"
                         className="form-input"
-                        style={{ padding: '0.3rem 0.5rem', fontSize: '0.85rem', width: '135px', boxSizing: 'border-box' }}
+                        style={{ padding: '0.25rem 0.4rem', fontSize: '0.85rem', width: '118px', boxSizing: 'border-box' }}
                         value={scheduleFrom}
                         onChange={e => handleUpdateSchedule(currentLoc.id, isScheduleEnabled, e.target.value, scheduleTo)}
                       />
@@ -1749,7 +1749,7 @@ export default function App() {
                       <input
                         type="time"
                         className="form-input"
-                        style={{ padding: '0.3rem 0.5rem', fontSize: '0.85rem', width: '135px', boxSizing: 'border-box' }}
+                        style={{ padding: '0.25rem 0.4rem', fontSize: '0.85rem', width: '118px', boxSizing: 'border-box' }}
                         value={scheduleTo}
                         onChange={e => handleUpdateSchedule(currentLoc.id, isScheduleEnabled, scheduleFrom, e.target.value)}
                       />
