@@ -1733,29 +1733,67 @@ export default function App() {
                     </label>
                   </div>
 
+                  <datalist id={`24h-times-${currentLoc.id}`}>
+                    {Array.from({ length: 48 }).map((_, i) => {
+                      const h = String(Math.floor(i / 2)).padStart(2, '0');
+                      const m = i % 2 === 0 ? '00' : '30';
+                      return <option key={`${h}:${m}`} value={`${h}:${m}`} />;
+                    })}
+                  </datalist>
+
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', opacity: isScheduleEnabled ? 1 : 0.4, pointerEvents: isScheduleEnabled ? 'auto' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       <span style={{ fontSize: '0.8rem', color: '#64748b' }}>From:</span>
                       <input
-                        type="time"
-                        lang="en-GB"
-                        step="60"
+                        type="text"
+                        list={`24h-times-${currentLoc.id}`}
+                        placeholder="08:00"
+                        maxLength={5}
                         className="form-input"
-                        style={{ padding: '0.25rem 0.4rem', fontSize: '0.82rem', width: '95px', boxSizing: 'border-box' }}
+                        style={{ padding: '0.25rem 0.4rem', fontSize: '0.85rem', width: '72px', textAlign: 'center', boxSizing: 'border-box' }}
                         value={scheduleFrom}
                         onChange={e => handleUpdateSchedule(currentLoc.id, isScheduleEnabled, e.target.value, scheduleTo)}
+                        onBlur={e => {
+                          let val = e.target.value.trim();
+                          if (val && !/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(val)) {
+                            const match = val.match(/^(\d{1,2}):?(\d{2})?$/);
+                            if (match) {
+                              const h = Math.min(23, parseInt(match[1] || '0')).toString().padStart(2, '0');
+                              const m = Math.min(59, parseInt(match[2] || '0')).toString().padStart(2, '0');
+                              val = `${h}:${m}`;
+                            } else {
+                              val = '08:00';
+                            }
+                            handleUpdateSchedule(currentLoc.id, isScheduleEnabled, val, scheduleTo);
+                          }
+                        }}
                       />
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       <span style={{ fontSize: '0.8rem', color: '#64748b' }}>To:</span>
                       <input
-                        type="time"
-                        lang="en-GB"
-                        step="60"
+                        type="text"
+                        list={`24h-times-${currentLoc.id}`}
+                        placeholder="17:00"
+                        maxLength={5}
                         className="form-input"
-                        style={{ padding: '0.25rem 0.4rem', fontSize: '0.82rem', width: '95px', boxSizing: 'border-box' }}
+                        style={{ padding: '0.25rem 0.4rem', fontSize: '0.85rem', width: '72px', textAlign: 'center', boxSizing: 'border-box' }}
                         value={scheduleTo}
                         onChange={e => handleUpdateSchedule(currentLoc.id, isScheduleEnabled, scheduleFrom, e.target.value)}
+                        onBlur={e => {
+                          let val = e.target.value.trim();
+                          if (val && !/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(val)) {
+                            const match = val.match(/^(\d{1,2}):?(\d{2})?$/);
+                            if (match) {
+                              const h = Math.min(23, parseInt(match[1] || '0')).toString().padStart(2, '0');
+                              const m = Math.min(59, parseInt(match[2] || '0')).toString().padStart(2, '0');
+                              val = `${h}:${m}`;
+                            } else {
+                              val = '17:00';
+                            }
+                            handleUpdateSchedule(currentLoc.id, isScheduleEnabled, scheduleFrom, val);
+                          }
+                        }}
                       />
                     </div>
                   </div>
