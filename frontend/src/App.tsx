@@ -1509,62 +1509,50 @@ export default function App() {
             const isCarAway = Boolean(currentLoc.notifications_disabled);
             return (
               <div className="card col-12" style={{ padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.3rem' }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    padding: '0.4rem 0.9rem',
-                    borderRadius: '0.75rem',
-                    border: '1px solid rgba(255, 255, 255, 0.08)'
-                  }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isCarAway ? '#f59e0b' : '#94a3b8' }}>
-                      Car Away
-                    </span>
-
-                    {/* Toggle Switch */}
-                    <button
-                      role="switch"
-                      aria-checked={isCarAway}
-                      style={{
-                        position: 'relative',
-                        width: '56px',
-                        height: '28px',
-                        borderRadius: '14px',
-                        border: 'none',
-                        background: isCarAway ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(255, 255, 255, 0.15)',
-                        cursor: 'pointer',
-                        transition: 'all 0.25s ease',
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: '2px',
-                        boxShadow: isCarAway ? '0 0 10px rgba(245, 158, 11, 0.3)' : 'none'
-                      }}
-                      onClick={() => handleToggleNotifications(currentLoc.id, isCarAway)}
-                      title={isCarAway ? "Car Away is ON: Notifications disabled" : "Car Away is OFF: Notifications enabled"}
-                    >
-                      <div style={{
-                        width: '24px',
-                        height: '24px',
-                        borderRadius: '50%',
-                        background: '#fff',
-                        transform: isCarAway ? 'translateX(28px)' : 'translateX(0px)',
-                        transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.7rem',
-                        boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
-                      }}>
-                        {isCarAway ? '🚗' : '🏠'}
-                      </div>
-                    </button>
-                  </div>
-                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', paddingLeft: '0.2rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Car Away</h3>
+                  <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
                     {isCarAway ? 'Car is away, notifications disabled.' : 'Car is home, notifications enabled.'}
                   </span>
                 </div>
+
+                {/* Toggle Switch */}
+                <button
+                  role="switch"
+                  aria-checked={isCarAway}
+                  style={{
+                    position: 'relative',
+                    width: '56px',
+                    height: '28px',
+                    borderRadius: '14px',
+                    border: 'none',
+                    background: isCarAway ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(255, 255, 255, 0.15)',
+                    cursor: 'pointer',
+                    transition: 'all 0.25s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '2px',
+                    boxShadow: isCarAway ? '0 0 10px rgba(245, 158, 11, 0.3)' : 'none'
+                  }}
+                  onClick={() => handleToggleNotifications(currentLoc.id, isCarAway)}
+                  title={isCarAway ? "Car Away is ON: Notifications disabled" : "Car Away is OFF: Notifications enabled"}
+                >
+                  <div style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    background: '#fff',
+                    transform: isCarAway ? 'translateX(28px)' : 'translateX(0px)',
+                    transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.7rem',
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
+                  }}>
+                    {isCarAway ? '🚗' : '🏠'}
+                  </div>
+                </button>
               </div>
             );
           })()}
