@@ -1738,8 +1738,10 @@ export default function App() {
                       <span style={{ fontSize: '0.8rem', color: '#64748b' }}>From:</span>
                       <input
                         type="time"
+                        lang="en-GB"
+                        step="60"
                         className="form-input"
-                        style={{ padding: '0.2rem 0.35rem', fontSize: '0.78rem', width: '106px', boxSizing: 'border-box', letterSpacing: '-0.01em' }}
+                        style={{ padding: '0.25rem 0.4rem', fontSize: '0.82rem', width: '95px', boxSizing: 'border-box' }}
                         value={scheduleFrom}
                         onChange={e => handleUpdateSchedule(currentLoc.id, isScheduleEnabled, e.target.value, scheduleTo)}
                       />
@@ -1748,8 +1750,10 @@ export default function App() {
                       <span style={{ fontSize: '0.8rem', color: '#64748b' }}>To:</span>
                       <input
                         type="time"
+                        lang="en-GB"
+                        step="60"
                         className="form-input"
-                        style={{ padding: '0.2rem 0.35rem', fontSize: '0.78rem', width: '106px', boxSizing: 'border-box', letterSpacing: '-0.01em' }}
+                        style={{ padding: '0.25rem 0.4rem', fontSize: '0.82rem', width: '95px', boxSizing: 'border-box' }}
                         value={scheduleTo}
                         onChange={e => handleUpdateSchedule(currentLoc.id, isScheduleEnabled, scheduleFrom, e.target.value)}
                       />
@@ -3034,7 +3038,7 @@ export default function App() {
                               onChange={e => setWindowStartHour(parseInt(e.target.value))}
                             >
                               {Array.from({ length: 24 }).map((_, h) => (
-                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00 {h >= 12 ? 'PM' : 'AM'}</option>
+                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
                               ))}
                             </select>
                           </div>
@@ -3050,7 +3054,7 @@ export default function App() {
                               onChange={e => setWindowEndHour(parseInt(e.target.value))}
                             >
                               {Array.from({ length: 24 }).map((_, h) => (
-                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00 {h >= 12 ? 'PM' : 'AM'}</option>
+                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
                               ))}
                             </select>
                           </div>
