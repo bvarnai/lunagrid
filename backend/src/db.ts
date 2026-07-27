@@ -16,6 +16,7 @@ export interface Location {
   car_away_schedule_enabled?: number;
   car_away_schedule_from?: string;
   car_away_schedule_to?: string;
+  target_compliance_hours?: number;
   ev_wakeup_enabled?: number;
   ev_wakeup_type?: string;
   ev_wakeup_target?: string;
@@ -126,6 +127,7 @@ export const initDb = async (): Promise<void> => {
   await addColumnSafe('car_away_schedule_enabled', 'INTEGER DEFAULT 0');
   await addColumnSafe('car_away_schedule_from', 'TEXT DEFAULT \'08:00\'');
   await addColumnSafe('car_away_schedule_to', 'TEXT DEFAULT \'17:00\'');
+  await addColumnSafe('target_compliance_hours', 'REAL DEFAULT 8.0');
 
   // Migrate existing data from ev_wakeup_* to ev_automation_* if they contain values
   try {
@@ -203,17 +205,17 @@ export const getAllLocations = (): Promise<Location[]> => {
   return allQuery<Location>('SELECT * FROM locations ORDER BY name ASC');
 };
 
-export const createLocation = async (id: string, name: string, timezone: string): Promise<void> => {
+export const createLocation = async (id: string, name: string, timezone: string, targetComplianceHours: number = 8.0): Promise<void> => {
   await runQuery(
-    'INSERT INTO locations (id, name, timezone) VALUES (?, ?, ?)',
-    [id, name, timezone]
+    'INSERT INTO locations (id, name, timezone, target_compliance_hours) VALUES (?, ?, ?, ?)',
+    [id, name, timezone, targetComplianceHours]
   );
 };
 
-export const updateLocation = async (id: string, name: string, timezone: string): Promise<void> => {
+export const updateLocation = async (id: string, name: string, timezone: string, targetComplianceHours: number = 8.0): Promise<void> => {
   await runQuery(
-    'UPDATE locations SET name = ?, timezone = ? WHERE id = ?',
-    [name, timezone, id]
+    'UPDATE locations SET name = ?, timezone = ?, target_compliance_hours = ? WHERE id = ?',
+    [name, timezone, targetComplianceHours, id]
   );
 };
 

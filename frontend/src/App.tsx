@@ -4,6 +4,7 @@ interface Location {
   id: string;
   name: string;
   timezone: string;
+  target_compliance_hours?: number;
   notifications_disabled?: number;
   car_away_schedule_enabled?: number;
   car_away_schedule_from?: string;
@@ -210,12 +211,14 @@ export default function App() {
   const [newLocId, setNewLocId] = useState('');
   const [newLocName, setNewLocName] = useState('');
   const [newLocTimezone, setNewLocTimezone] = useState('Europe/Budapest');
+  const [newLocTargetComplianceHours, setNewLocTargetComplianceHours] = useState('8.0');
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
 
   // Form states for editing location
   const [editingLocId, setEditingLocId] = useState<string | null>(null);
   const [editLocName, setEditLocName] = useState('');
   const [editLocTimezone, setEditLocTimezone] = useState('Europe/Budapest');
+  const [editLocTargetComplianceHours, setEditLocTargetComplianceHours] = useState('8.0');
 
   // Form states for editing device friendly name
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
@@ -811,17 +814,19 @@ export default function App() {
     e.preventDefault();
     const finalSlug = newLocId.trim() || generateSlug(newLocName);
     if (!finalSlug || !newLocName || !newLocTimezone) return;
+    const targetHours = parseFloat(newLocTargetComplianceHours) || 8.0;
 
     if (isBackendConnected) {
       try {
         const res = await fetch(`${apiBaseUrl}/api/locations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: finalSlug, name: newLocName, timezone: newLocTimezone })
+          body: JSON.stringify({ id: finalSlug, name: newLocName, timezone: newLocTimezone, target_compliance_hours: targetHours })
         });
         if (res.ok) {
           setNewLocId('');
           setNewLocName('');
+          setNewLocTargetComplianceHours('8.0');
           setIsSlugManuallyEdited(false);
           fetchMetadata();
           setLogs(prev => [`[SYSTEM] Location '${newLocName}' created.`, ...prev]);
@@ -830,9 +835,10 @@ export default function App() {
         console.error(err);
       }
     } else {
-      setLocations(prev => [...prev, { id: finalSlug, name: newLocName, timezone: newLocTimezone }]);
+      setLocations(prev => [...prev, { id: finalSlug, name: newLocName, timezone: newLocTimezone, target_compliance_hours: targetHours }]);
       setNewLocId('');
       setNewLocName('');
+      setNewLocTargetComplianceHours('8.0');
       setIsSlugManuallyEdited(false);
     }
   };
@@ -841,13 +847,14 @@ export default function App() {
   const handleEditLocationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingLocId || !editLocName || !editLocTimezone) return;
+    const targetHours = parseFloat(editLocTargetComplianceHours) || 8.0;
 
     if (isBackendConnected) {
       try {
         const res = await fetch(`${apiBaseUrl}/api/locations/${editingLocId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: editLocName, timezone: editLocTimezone })
+          body: JSON.stringify({ name: editLocName, timezone: editLocTimezone, target_compliance_hours: targetHours })
         });
         if (res.ok) {
           setEditingLocId(null);
@@ -858,7 +865,7 @@ export default function App() {
         console.error(err);
       }
     } else {
-      setLocations(prev => prev.map(l => l.id === editingLocId ? { ...l, name: editLocName, timezone: editLocTimezone } : l));
+      setLocations(prev => prev.map(l => l.id === editingLocId ? { ...l, name: editLocName, timezone: editLocTimezone, target_compliance_hours: targetHours } : l));
       setEditingLocId(null);
     }
   };
@@ -1917,13 +1924,19 @@ export default function App() {
             </div>
           )}
 
-          {/* DSO Contractual Compliance (7-Day Overview) */}
-          {telemetry.deviceId && (
-            <div className="card col-12" style={{ marginTop: '0rem' }}>
-              <h3>DSO B-Tariff Contractual Compliance (7-Day Overview)</h3>
-              <p className="info-txt">Checks if the utility provider has met the contractual daily minimum of 8.0 hours of B-tariff availability.</p>
-              
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1.25rem' }}>
+          {/* Provider Contractual Compliance (7-Day Overview) */}
+          {telemetry.deviceId && (() => {
+            const currentSelectedLoc = locations.find(l => l.id === selectedLocationId);
+            const targetComplianceVal = (currentSelectedLoc && currentSelectedLoc.target_compliance_hours !== undefined) 
+              ? currentSelectedLoc.target_compliance_hours 
+              : 8.0;
+
+            return (
+              <div className="card col-12" style={{ marginTop: '0rem' }}>
+                <h3>Provider B-Tariff Contractual Compliance (7-Day Overview)</h3>
+                <p className="info-txt">Checks if the utility provider has met the contractual daily minimum of {targetComplianceVal.toFixed(1)} hours of B-tariff availability.</p>
+                
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1.25rem' }}>
                 {(() => {
                   const now = Date.now();
                   const last7Days = [];
@@ -2017,7 +2030,8 @@ export default function App() {
                 })()}
               </div>
             </div>
-          )}
+          );
+        })()}
 
           {/* Real-time Diagnostics Text Cards */}
           <div className="card col-12" style={{ marginTop: '0rem' }}>
@@ -2145,6 +2159,11 @@ export default function App() {
                 <label>Timezone</label>
                 <input className="form-input" type="text" required value={newLocTimezone} onChange={e => setNewLocTimezone(e.target.value)} />
               </div>
+              <div className="form-group">
+                <label>Provider Contract Target (Hours/Day)</label>
+                <input className="form-input" type="number" step="0.5" min="1" max="24" required value={newLocTargetComplianceHours} onChange={e => setNewLocTargetComplianceHours(e.target.value)} />
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Default minimum is 8.0 hours per 24h period.</span>
+              </div>
               <button className="btn-action" style={{ width: '100%', marginTop: '0.5rem' }} type="submit">Create Location</button>
             </form>
           </div>
@@ -2165,6 +2184,10 @@ export default function App() {
                   <div className="form-group">
                     <label>Timezone</label>
                     <input className="form-input" type="text" value={editLocTimezone} onChange={e => setEditLocTimezone(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Provider Contract Target (Hours/Day)</label>
+                    <input className="form-input" type="number" step="0.5" min="1" max="24" required value={editLocTargetComplianceHours} onChange={e => setEditLocTargetComplianceHours(e.target.value)} />
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                     <button className="btn-secondary" type="button" onClick={() => setEditingLocId(null)}>Cancel</button>
@@ -2191,13 +2214,16 @@ export default function App() {
                       <div className="location-mgmt-header">
                         <div>
                           <strong>{loc.name}</strong>
-                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>ID: {loc.id} | TZ: {loc.timezone}</div>
+                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                            ID: {loc.id} | TZ: {loc.timezone} | Target: {(loc.target_compliance_hours ?? 8.0).toFixed(1)}h/day
+                          </div>
                         </div>
                         <div style={{ display: 'flex', gap: '0.35rem' }}>
                           <button className="btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }} onClick={() => {
                             setEditingLocId(loc.id);
                             setEditLocName(loc.name);
                             setEditLocTimezone(loc.timezone);
+                            setEditLocTargetComplianceHours((loc.target_compliance_hours ?? 8.0).toString());
                           }}>
                             Edit
                           </button>

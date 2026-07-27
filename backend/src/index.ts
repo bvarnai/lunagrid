@@ -123,13 +123,14 @@ app.get('/api/locations', async (req, res) => {
 });
 
 app.post('/api/locations', async (req, res) => {
-  const { id, name, timezone } = req.body;
+  const { id, name, timezone, target_compliance_hours } = req.body;
   if (!id || !name || !timezone) {
     return res.status(400).json({ error: 'id, name, and timezone are required' });
   }
+  const targetHours = target_compliance_hours !== undefined ? parseFloat(target_compliance_hours) : 8.0;
   try {
-    await createLocation(id, name, timezone);
-    res.status(201).json({ status: 'created', location: { id, name, timezone } });
+    await createLocation(id, name, timezone, targetHours);
+    res.status(201).json({ status: 'created', location: { id, name, timezone, target_compliance_hours: targetHours } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to create location. ID may already exist.' });
   }
@@ -137,13 +138,14 @@ app.post('/api/locations', async (req, res) => {
 
 app.put('/api/locations/:id', async (req, res) => {
   const id = req.params.id;
-  const { name, timezone } = req.body;
+  const { name, timezone, target_compliance_hours } = req.body;
   if (!name || !timezone) {
     return res.status(400).json({ error: 'name and timezone are required' });
   }
+  const targetHours = target_compliance_hours !== undefined ? parseFloat(target_compliance_hours) : 8.0;
   try {
-    await updateLocation(id, name, timezone);
-    res.json({ status: 'success', location: { id, name, timezone } });
+    await updateLocation(id, name, timezone, targetHours);
+    res.json({ status: 'success', location: { id, name, timezone, target_compliance_hours: targetHours } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update location' });
   }
@@ -462,6 +464,9 @@ app.get('/api/locations/:id/compliance', async (req, res) => {
       throw new Error(`InfluxDB query failed: ${response.statusText}`);
     }
 
+    const loc = await getLocationById(locationId);
+    const targetHours = (loc && loc.target_compliance_hours !== undefined) ? loc.target_compliance_hours : 8.0;
+
     const csvText = await response.text();
     const lines = csvText.split('\n');
     const compliance: Array<{ date: string; activeHours: number; compliant: boolean }> = [];
@@ -477,7 +482,7 @@ app.get('/api/locations/:id/compliance', async (req, res) => {
         compliance.push({
           date: time,
           activeHours: activeHours,
-          compliant: activeHours >= 8.0
+          compliant: activeHours >= targetHours
         });
       }
     }
