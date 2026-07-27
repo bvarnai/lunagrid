@@ -291,8 +291,13 @@ export const isLocationCarAwayActive = (location: Location): { active: boolean; 
   if (location.car_away_schedule_enabled && location.car_away_schedule_from && location.car_away_schedule_to) {
     try {
       const tz = location.timezone || 'Europe/Budapest';
-      const nowStr = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
-      const [nowH, nowM] = nowStr.split(':').map(Number);
+      const formatter = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: 'numeric', minute: 'numeric', hour12: false });
+      const parts = formatter.formatToParts(new Date());
+      let nowH = 0, nowM = 0;
+      for (const p of parts) {
+        if (p.type === 'hour') nowH = parseInt(p.value, 10) % 24;
+        if (p.type === 'minute') nowM = parseInt(p.value, 10);
+      }
       const nowMins = nowH * 60 + nowM;
 
       const [fromH, fromM] = location.car_away_schedule_from.split(':').map(Number);

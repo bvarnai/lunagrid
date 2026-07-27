@@ -7,7 +7,7 @@ This document outlines the system architecture, hardware requirements, communica
 ## 1. Project Overview & Architecture
 
 ### 1.1 Executive Abstract
-In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled tariff known as "B tarifa" or "éjszakai áram" (night electricity). Instead of active timing, the DSO switches this grid line on and off dynamically using ripple control (hangfrekvenciás vezérlés) for a cumulative duration of at least 8 hours per 24-hour period. Because these active windows shift depending on seasonal loads and grid stabilization needs, consumers cannot predict when their appliances (mostly storage water heaters) will receive power.
+In Hungary, Distribution System Operators (utility providers) offer a reduced-rate controlled tariff known as "B tarifa" or "éjszakai áram" (night electricity). Instead of active timing, the utility provider switches this grid line on and off dynamically using ripple control (hangfrekvenciás vezérlés) for a cumulative duration of at least 8 hours per 24-hour period. Because these active windows shift depending on seasonal loads and grid stabilization needs, consumers cannot predict when their appliances (mostly storage water heaters) will receive power.
 
 **Project Lunagrid** solves this by providing a non-intrusive, safe, and low-cost IoT monitor. Using a dedicated physical contactor (Iskra IKA20-11/230V) to isolate the high-voltage 230V AC B-tariff line, the system uses an ESP32-C3 Super Mini development board to sense the line status. Real-time telemetry is uploaded via Wi-Fi to a cloud broker, enabling time-series tracking, historical availability analysis, and push notifications.
 
@@ -157,7 +157,8 @@ In Hungary, Distribution System Operators (DSOs) offer a reduced-rate controlled
     1.  **Dashboard Tab:**
         *   **Grid State Hero:** Real-time B-tariff status reading either `B-Tariff ON` (Green) or `B-Tariff OFF` (Red).
         *   **Today's Availability Strip:** A 24-segment timeline strip visualizing B-tariff active hours for the current calendar day (from 00:00 to 23:00).
-        *   **Contractual Compliance (7-Day Overview):** 7 calendar blocks calculating B-tariff hours per day. Marks days **`🟢 COMPLIANT`** (hours >= 8.0) or **`🔴 FAIL`** (hours < 8.0). Renders as **`⚫ N/A`** for days with missing telemetry.
+        *   **Contractual Compliance (7-Day Overview):** 7 calendar blocks calculating B-tariff hours per day relative to the location's configurable Provider Contract Target (defaulting to 8.0h/day). Marks days **`🟢 COMPLIANT`** (hours >= target) or **`🔴 FAIL`** (hours < target). Renders as **`⚫ N/A`** for days with missing telemetry.
+        *   **Car Away Panel:** Supports manual toggle override and a daily automatic schedule (`From` - `To` in strict 24h format) to silence notifications when away.
         *   **Diagnostic Parameters:** Real-time RSSI signal quality badges, heap size, and formatted uptime.
         *   **Stretched Activity Console Logs:** Displays rolling logs with client-side local timezone formatting.
     2.  **Locations & Devices Tab:** Create locations, map device registrations, and unregister devices manually.
