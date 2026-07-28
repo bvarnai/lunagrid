@@ -46,7 +46,7 @@ Under the **Locations & Devices** tab, each location card exposes an **EV Chargi
 
 ## 3. Integration Recipes
 
-### Recipe A: Home Assistant Webhook (Recommended)
+### Recipe A: Home Assistant Webhook
 This is a reliable way to wake up a Skoda Enyaq because Home Assistant handles session renewal and security checks natively.
 
 1. In Home Assistant, create a new **Automation**:
@@ -101,48 +101,21 @@ If you prefer to run a custom local script (Python, Bash, Node.js, etc.) on grid
 
 ---
 
-### Recipe C: EVCC (Electric Vehicle Charge Controller) HTTP Polling (Alternative)
-If you use EVCC to manage charging, you can configure it to query the Lunagrid backend REST API directly. This provides a pull-based integration.
+### Recipe C: EVCC (Electric Vehicle Charge Controller) Integration
+If you manage vehicle charging using EVCC, you can configure it to follow the grid contactor status automatically using the MQTT status monitoring flow.
 
-1. **How EVCC handles status**:
-   EVCC polls the Lunagrid `/telemetry` endpoint. When the B-tariff turns ON, EVCC detects that the charger state has transitioned from `A` (disconnected) to `B` (connected).
-2. **How EVCC handles wake-up**:
-   Because the loadpoint is configured in `now` mode and the vehicle is connected but asleep, EVCC natively triggers its built-in Škoda API wakeup sequence to wake the Enyaq and begin charging.
-3. **No Webhook Required**:
-   In this unified HTTP polling configuration, you do not need to configure any webhooks or local wakeup scripts in the Lunagrid web portal. EVCC manages the entire state machine on its own.
-
----
-
-### Recipe D: EVCC (Electric Vehicle Charge Controller) Webhook Trigger (Alternative)
-If you prefer a push-based wakeup trigger and configure EVCC's charger with static values, you can use the Lunagrid portal's webhook to hit EVCC's wake endpoint.
-
-1. **How EVCC is configured:** In `/etc/evcc.yaml`, the custom charger uses static values (status `B`, enabled `true`). EVCC assumes the charger is permanently connected.
-2. **Configure the Lunagrid portal:**
-   - Navigate to the **Locations & Devices** tab.
-   - Under your location card's **EV Charging Automation** panel, select Type: **Webhook (HTTP POST)**.
-   - Set Target URL to: `http://evcc:7070/api/charge/1/wake` (or use the host IP).
-3. **How it works:** When B-tariff turns ON, Lunagrid dispatches a webhook POST to EVCC's `/wake` endpoint. EVCC receives this and triggers the vehicle wakeup call via the Škoda API, starting the charge session since B-tariff grid power is now physically present.
-
----
-
-### Recipe E: EVCC (Electric Vehicle Charge Controller) MQTT Integration (Highly Recommended)
-If you run EVCC with the MQTT status monitoring flow, you can configure Lunagrid to push the charger state changes directly to your broker.
-
-1. **Configure the Lunagrid portal:**
+1. **Configure the Lunagrid Portal**:
    - Navigate to the **Locations & Devices** tab.
    - Under your location card's **EV Charging Automation** panel, select Type: **MQTT Message Broker**.
-   - Set **MQTT Status Topic** to: `evcc/charger/status` (or your custom topic).
-   - Optional: Set **Custom MQTT Payloads** to custom JSON (e.g. `{"on": "C", "off": "A"}`). Defaults to `"C"` and `"A"`.
-2. **How it works:**
-   - When B-tariff turns ON, Lunagrid publishes `"C"` (or your custom `"on"` payload) to the topic.
-   - When B-tariff turns OFF, Lunagrid publishes `"A"` (or your custom `"off"` payload) to the topic.
-   - EVCC subscribes to this topic. If you use the JS-based charger configuration (described in the [EVCC Integration & Setup Guide](evcc_integration.md)), EVCC transitions the charger status to `"A"` (standby) when B-tariff is OFF, and to `"B"` (connected) when B-tariff is ON. When EVCC enables charging, it simulates a 45-second delay before transitioning to `"C"` (charging) to wake up the vehicle and avoid immediate charging faults.
+   - Set **MQTT Status Topic** to: `evcc/charger/status`.
+   - Optional: Set **Custom MQTT Payloads** to custom JSON mapping (e.g., `{"on": "C", "off": "A"}`). Defaults to `"C"` and `"A"`.
 
----
+2. **How it works**:
+   - **Contactor State Monitoring**: When B-tariff grid power turns ON/OFF, Lunagrid publishes the observed state (typically `"C"` for ON, `"A"` for OFF) to the MQTT topic `evcc/charger/status`.
+   - **State Emulation & Control**: EVCC subscribes to this topic. Using the custom Javascript state machine configured on `my_charger` in [evcc.yaml](../infrastructure/evcc/evcc.yaml), it translates the contactor state into the passive charger status:
+     - If B-tariff is OFF (contactor de-energized), the status is mapped to `'A'` (disconnected / standby).
+     - If B-tariff turns ON, the status transitions to `'B'` (connected / waiting).
+     - When EVCC enables charging (`enable: true`), the charger waits for **45 seconds** before transitioning from `'B'` to `'C'` (charging). This delay allows the vehicle (e.g. Skoda Enyaq) to wake up smoothly and prevents immediate charging faults.
+   - For complete configuration details, refer to the [EVCC Integration & Setup Guide](evcc_integration.md).
 
-## 4. Troubleshooting & CSRF Errors
 
-If your manual test or automation fails with `myskoda.auth.authorization.CSRFError`:
-- **Incorrect Password**: Double-check your login credentials. If you run the Python script from the terminal, make sure to wrap passwords containing special characters (like wildcards `*` or `$`) in **single quotes** (`'your_password*'`) to prevent shell expansion.
-- **MFA/2FA or CAPTCHA**: Skoda's identity portal (VW Group ID) blocks automated logins if it flags your server's IP address or if you have 2FA enabled. Try logging in via an incognito browser window on the same machine to see if you get a CAPTCHA. If so, using the **Home Assistant Webhook** option is recommended.
-- **Pending Agreements**: Log in to the official MySkoda mobile app on your phone and accept any new Terms of Service or marketing consent popups.
