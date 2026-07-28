@@ -4,13 +4,11 @@ This guide explains how to integrate **EVCC (Electric Vehicle Charge Controller)
 
 In this setup, EVCC acts as the energy management and smart charging controller for a switchless/passive charger (represented in EVCC as `my_charger` with a 3.6 kW charging limit) and a **Škoda Enyaq** (60 kWh battery, configured as `my_vehicle`). 
 
-There are two supported integration approaches:
-1. **MQTT-Based Push Integration (Recommended)**: Lunagrid automatically publishes charger status to the MQTT broker on state transitions, and EVCC reacts instantly.
-2. **HTTP-Polling-Based Pull Integration (Legacy)**: EVCC polls the Lunagrid backend REST API endpoint periodically to check the state.
+The integration uses an **MQTT-Based Push Integration** where Lunagrid automatically publishes the charger status to the MQTT broker on grid state transitions, and EVCC reacts instantly.
 
 ---
 
-## 1. MQTT-Based Push Integration (Recommended)
+## 1. MQTT-Based Push Integration
 
 In this flow, EVCC acts as a smart controller following the state of the physical socket/contactor managed by the User/App (B-tariff grid state).
 
@@ -129,44 +127,7 @@ loadpoints:
 
 ---
 
-## 2. HTTP-Polling-Based Pull Integration (Legacy)
-
-In this legacy setup, EVCC queries the Lunagrid backend REST API directly.
-
-### How it Works
-1. **Contactor state -> EVCC Status:** Lunagrid publishes the grid contactor state to MQTT. The backend caches this telemetry.
-2. **HTTP Polling:** EVCC polls the Lunagrid backend REST API endpoint `/api/locations/<location-id>/telemetry`.
-3. **Charger State Mapping:** 
-   - When B-tariff is OFF, status is `A` (disconnected).
-   - When B-tariff turns ON, status transitions to `B` (connected/ready).
-4. **Native Vehicle Wakeup:** Upon status transition to `B`, EVCC starts the loadpoint charge session and automatically triggers its native wakeup routine using the Škoda Cloud API to wake the vehicle.
-
-### EVCC Configuration (`evcc.yaml`)
-```yaml
-chargers:
-  - name: my_charger
-    type: custom
-    features:
-      - switchdevice # Tells EVCC that this is an on/off switchless charger
-    status:
-      source: http
-      uri: http://lunagrid-backend:3000/api/locations/budapest-home-1/telemetry # Replace with your location ID
-      jq: if .gridActive then "B" else "A" end
-    enabled:
-      source: http
-      uri: http://lunagrid-backend:3000/api/locations/budapest-home-1/telemetry
-      jq: .gridActive
-    enable:
-      source: script
-      cmd: /bin/true # No-op command required by EVCC for custom chargers
-    maxcurrent:
-      source: const
-      value: 16 # Fixed hardware limit of the Rheidon charger
-```
-
----
-
-## 3. Running EVCC in Docker Compose
+## 2. Running EVCC in Docker Compose
 
 The `infrastructure/docker-compose.yml` file includes the `evcc` service. Spin up the entire infrastructure using:
 
