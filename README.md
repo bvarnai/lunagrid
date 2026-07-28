@@ -26,8 +26,9 @@ A low-cost, end-user IoT device designed to monitor grid power status and log th
 
 Here is a preview of the physical DIY board and the Project Lunagrid web interface:
 
-### Web Console Dashboard
+### Web Console Dashboard & Settings
 ![Lunagrid Web Dashboard](docs/screenshot_dashboard.png)
+![Lunagrid Web Settings](docs/screenshot_settings.png)
 
 ### DIY Hardware Board
 ![Lunagrid DIY Board](docs/demo_board.jpg)
