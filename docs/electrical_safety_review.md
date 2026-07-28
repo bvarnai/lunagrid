@@ -41,19 +41,19 @@ In most jurisdictions (including Hungary and across the EU), working inside elec
 
 ## 2. Technical Gaps & Firmware Analysis
 
-A code audit of the current firmware ([main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp)) reveals several critical security and operational gaps relative to ideal robustness standards (which are also documented as known limitations in [system_architecture.md](file:///home/bvarnai/workspace/lunagrid/docs/system_architecture.md)):
+A code audit of the current firmware ([main.cpp](../firmware/src/main.cpp)) reveals several critical security and operational gaps relative to ideal robustness standards (which are also documented as known limitations in [system_architecture.md](system_architecture.md)):
 
 ### 2.1 GPIO Configuration
-*   **The Status:** The initial project draft contained conflicting references to the sensor pin (GPIO 2 vs. GPIO 3). This has been resolved, and the specifications in [system_architecture.md](file:///home/bvarnai/workspace/lunagrid/docs/system_architecture.md) now consistently reference **GPIO 3** to align with the firmware source code ([main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp)).
+*   **The Status:** The initial project draft contained conflicting references to the sensor pin (GPIO 2 vs. GPIO 3). This has been resolved, and the specifications in [system_architecture.md](system_architecture.md) now consistently reference **GPIO 3** to align with the firmware source code ([main.cpp](../firmware/src/main.cpp)).
 
 ### 2.2 Blocking Network Routines (Loss of State Detection)
-*   **The Issue:** In [main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp), the network connection routines `setupWifi()` and `reconnectMqtt()` are completely blocking.
+*   **The Issue:** In [main.cpp](../firmware/src/main.cpp), the network connection routines `setupWifi()` and `reconnectMqtt()` are completely blocking.
 *   **The Impact:** If the Wi-Fi router loses power or the MQTT broker goes offline, the microcontroller becomes trapped inside these loops. Because the sensor pin polling is done in `loop()`, **the device will completely fail to detect contactor state transitions while attempting to reconnect.** If a grid state transition occurs during a network outage, it is permanently missed.
 *   **Mitigation:** Refactor the network connection code to be non-blocking using a simple state machine, or utilize hardware interrupts (`attachInterrupt()`) on GPIO 3 to log events to a queue regardless of whether the main loop is waiting on network tasks.
 
 ### 2.3 Missing Offline Buffering and Captive Portal
 *   **The Issue:** The initial project design proposed local Captive Portal Wi-Fi provisioning and saving offline telemetry events to the internal flash using LittleFS.
-*   **The Reality:** The current firmware ([main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp)) does not implement LittleFS, contains no flash writing logic, lacks a Captive Portal, and simply resets the board via `ESP.restart()` if Wi-Fi cannot connect within 15 seconds.
+*   **The Reality:** The current firmware ([main.cpp](../firmware/src/main.cpp)) does not implement LittleFS, contains no flash writing logic, lacks a Captive Portal, and simply resets the board via `ESP.restart()` if Wi-Fi cannot connect within 15 seconds.
 *   **Mitigation:** The firmware needs to be extended to mount LittleFS, track time using NTP/RTC offset buffers, and cache events locally during offline phases rather than rebooting.
 
 ### 2.4 Firmware Security & Unsigned OTA Updates

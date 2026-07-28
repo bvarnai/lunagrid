@@ -123,7 +123,7 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
 ## 4. Firmware Engine & Edge Computing
 
 > [!NOTE]
-> For step-by-step instructions on setting up the local build environment, configuring WSL2/usbipd, and compiling/flashing the firmware, refer to the [Firmware Development Guide](file:///home/bvarnai/workspace/lunagrid/docs/firmware_development.md).
+> For step-by-step instructions on setting up the local build environment, configuring WSL2/usbipd, and compiling/flashing the firmware, refer to the [Firmware Development Guide](firmware_development.md).
 
 ### 4.1 State Machine Architecture
 *   `BOOT` -> Initialize GPIOs, configure internal pull-up on GPIO 3, read initial contactor state.
@@ -173,7 +173,7 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
 ### 6.1 Hardware-to-Cloud Security Matrix
 *   **Device Identity:** Unique client ID generated from the ESP32-C3 MAC address.
 *   **Encryption in Transit:** In this version, communication over MQTT is unencrypted (Port 1883). Users are encouraged to run their broker inside a private VPN (such as Tailscale) or a local VLAN to protect data and credentials from interception.
-*   **Isolation:** The high voltage (230V AC) is isolated entirely inside the mains panel by the IKA20-11 contactor. Only low voltage dry contact wires leave the panel to connect to the ESP32-C3 enclosure, keeping the user interface completely safe. *Note: Galvanic isolation carries significant risk of breakdown under surge conditions or component failure. Please consult the [Electrical Safety & Technical Risk Review](file:///home/bvarnai/workspace/lunagrid/docs/electrical_safety_review.md) for critical warning guidelines and circuit protection recommendations.*
+*   **Isolation:** The high voltage (230V AC) is isolated entirely inside the mains panel by the IKA20-11 contactor. Only low voltage dry contact wires leave the panel to connect to the ESP32-C3 enclosure, keeping the user interface completely safe. *Note: Galvanic isolation carries significant risk of breakdown under surge conditions or component failure. Please consult the [Electrical Safety & Technical Risk Review](electrical_safety_review.md) for critical warning guidelines and circuit protection recommendations.*
 
 ### 6.2 Over-The-Air (OTA) Firmware Updates
 *   **Update Mechanism:** Standard ESP32 OTA update over HTTP.

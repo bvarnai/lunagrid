@@ -56,10 +56,10 @@ graph TD
 
 The following configurations are committed to the codebase and ready for deployment:
 
-1. **Docker Compose**: The new services (`lunagrid-mosquitto`, `influxdb`, `lunagrid-telegraf`, and `lunagrid-backend`) have been appended to [docker-compose.yml](file:///home/bvarnai/workspace/infra/nodes/nas48/docker-compose.yml#L107).
-2. **Telegraf Config**: Built at [telegraf.conf](file:///home/bvarnai/workspace/infra/nodes/nas48/etc/lunagrid/telegraf.conf) using `tcp://lunagrid-mosquitto:1883`.
-3. **Nginx Reverse Proxy**: Configured in [nginx.conf](file:///home/bvarnai/workspace/infra/nodes/nas48/etc/nginx/nginx.conf#L114-L139) to route `/lunagrid/` to the static directory and `/lunagrid/api/` to `127.0.0.1:3002`.
-4. **Firmware Target**: Updated `mqtt_server` in [main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp#L10) to point to `mqtt.nas48.vbl.hu`.
+1. **Docker Compose**: The new services (`lunagrid-mosquitto`, `influxdb`, `lunagrid-telegraf`, and `lunagrid-backend`) have been appended to [docker-compose.yml](../../infra/nodes/nas48/docker-compose.yml#L107).
+2. **Telegraf Config**: Built at [telegraf.conf](../../infra/nodes/nas48/etc/lunagrid/telegraf.conf) using `tcp://lunagrid-mosquitto:1883`.
+3. **Nginx Reverse Proxy**: Configured in [nginx.conf](../../infra/nodes/nas48/etc/nginx/nginx.conf#L114-L139) to route `/lunagrid/` to the static directory and `/lunagrid/api/` to `127.0.0.1:3002`.
+4. **Firmware Target**: Updated `mqtt_server` in [main.cpp](../firmware/src/main.cpp#L10) to point to `mqtt.nas48.vbl.hu`.
 
 ---
 
@@ -94,7 +94,7 @@ Run the automated deployment script from your local workspace to compile and upl
 ```
 
 > [!TIP]
-> The [deploy.sh](file:///home/bvarnai/workspace/lunagrid/tools/deploy.sh) script automatically runs `npm run build` locally and uploads the compiled code via `rsync` to `bvarnai@nas48`.
+> The [deploy.sh](../tools/deploy.sh) script automatically runs `npm run build` locally and uploads the compiled code via `rsync` to `bvarnai@nas48`.
 
 ### Step 3: Launch Docker Services (on NAS)
 Pull changes from the repository on the NAS, build the Node.js backend image, and start the containers:
@@ -136,4 +136,4 @@ docker-compose up -d --build
   - **Token**: `lunagrid_secure_pass123`
   - **Default Bucket**: `lunagrid-telemetry`
 - Click **Save & test** to verify.
-- Import the pre-made dashboard from [lunagrid.json](file:///home/bvarnai/workspace/lunagrid/infrastructure/grafana/provisioning/dashboards/lunagrid.json).
+- Import the pre-made dashboard from [lunagrid.json](../infrastructure/grafana/provisioning/dashboards/lunagrid.json).
