@@ -1,31 +1,49 @@
 # EVCC Configuration File
-# Updated for MQTT-based passive charging state monitoring flow
+# Documentation: https://docs.evcc.io/en/
 
 network:
   schema: http
   host: 0.0.0.0
   port: 7070
+  externalUrl: https://nas48.vbl.hu/evcc
 
 mqtt:
   broker: lunagrid-mosquitto:1883
 
-# Site settings
-site:
-  title: Garage Charging Station
-  currency: HUF # Hungarian Forint
-
 chargers:
-  - name: rheidon_pc200_3k6
+  - name: my_charger
     type: custom
     status:
-      source: mqtt
-      topic: evcc/charger/status
+      source: js
+      vm: my_charger
+      script: |
+        if (mqttStatus === 'A' || mqttStatus === 'off' || mqttStatus === 'OFF' || mqttStatus === '0') {
+          'A';
+        } else if (typeof enabledState !== 'undefined' && enabledState) {
+          var elapsed = (new Date().getTime() - (typeof enableTime !== 'undefined' ? enableTime : 0)) / 1000;
+          elapsed < 45 ? 'B' : 'C';
+        } else {
+          'B';
+        }
+      in:
+        - name: mqttStatus
+          type: string
+          config:
+            source: mqtt
+            topic: evcc/charger/status
+            timeout: 24h
     enabled:
-      source: const
-      value: "true"
+      source: js
+      vm: my_charger
+      script: "typeof enabledState === 'undefined' ? false : enabledState"
     enable:
       source: js
-      script:
+      vm: my_charger
+      script: |
+        enabledState = enable;
+        if (enable) {
+          enableTime = new Date().getTime();
+        }
     maxcurrent:
       source: js
       script:
@@ -36,29 +54,32 @@ chargers:
         - name: status
           type: string
           config:
-            source: mqtt
-            topic: evcc/charger/status
+            source: js
+            vm: my_charger
+            script: |
+              if (typeof enabledState !== 'undefined' && enabledState) {
+                var elapsed = (new Date().getTime() - (typeof enableTime !== 'undefined' ? enableTime : 0)) / 1000;
+                elapsed < 45 ? 'B' : 'C';
+              } else {
+                'B';
+              }
 
+# Define your vehicle connection
 vehicles:
-  - name: my_enyaq
-    type: template
-    template: skoda
+  - name: my_vehicle
+    type: skoda
     title: Skoda Enyaq
     user: "bvarnai@gmail.com"
     password: "pkg_nyk3ZNH3uwk*dgk"
     vin: "TMBJB7NY8NF024802"
     capacity: 60
-    phases: 1
-    cache: 15m
-    wakeupdisabled: false
-    climaterdisabled: false
-    autodetectdisabled: false
+
+site:
+  title: Home
 
 loadpoints:
-  - title: Garage Charging Station
-    charger: rheidon_pc200_3k6
-    vehicle: my_enyaq
-    mode: now # Default mode
-    phases: 1
-    mincurrent: 6
-    maxcurrent: 16
+  - name: my_carport
+    title: EV Charging Socket
+    charger: my_charger
+    vehicle: my_vehicle
+    mode: now

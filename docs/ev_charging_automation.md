@@ -127,9 +127,9 @@ If you run EVCC with the MQTT status monitoring flow, you can configure Lunagrid
    - Set **MQTT Status Topic** to: `evcc/charger/status` (or your custom topic).
    - Optional: Set **Custom MQTT Payloads** to custom JSON (e.g. `{"on": "C", "off": "A"}`). Defaults to `"C"` and `"A"`.
 2. **How it works:**
-   - When B-tariff turns ON, Lunagrid publishes `"C"` (or custom `"on"` payload) to the topic.
-   - When B-tariff turns OFF, Lunagrid publishes `"A"` (or custom `"off"` payload) to the topic.
-   - EVCC subscribes to this topic and transitions the passive charger status instantly between `"C"` (charging) and `"A"` (standby), triggering Škoda Cloud wakeups and calculating power draw automatically.
+   - When B-tariff turns ON, Lunagrid publishes `"C"` (or your custom `"on"` payload) to the topic.
+   - When B-tariff turns OFF, Lunagrid publishes `"A"` (or your custom `"off"` payload) to the topic.
+   - EVCC subscribes to this topic. If you use the JS-based charger configuration (described in the [EVCC Integration & Setup Guide](file:///home/bvarnai/workspace/lunagrid/docs/evcc_integration.md)), EVCC transitions the charger status to `"A"` (standby) when B-tariff is OFF, and to `"B"` (connected) when B-tariff is ON. When EVCC enables charging, it simulates a 45-second delay before transitioning to `"C"` (charging) to wake up the vehicle and avoid immediate charging faults.
 
 ---
 
