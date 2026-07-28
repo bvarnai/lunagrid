@@ -41,29 +41,18 @@ In most jurisdictions (including Hungary and across the EU), working inside elec
 
 ## 2. Technical Gaps & Firmware Analysis
 
-A code audit of the current firmware ([main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp)) reveals several critical bugs and differences from the project specifications:
+A code audit of the current firmware ([main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp)) reveals several critical security and operational gaps relative to ideal robustness standards (which are also documented as known limitations in [system_architecture.md](file:///home/bvarnai/workspace/lunagrid/docs/system_architecture.md)):
 
-### 2.1 GPIO Configuration Discrepancy
-*   **The Issue:** The project plan ([lunagrid_project_plan.md](file:///home/bvarnai/workspace/lunagrid/docs/lunagrid_project_plan.md)) contains conflicting references to the sensor pin:
-    *   Section 2.2 and Section 8.1 specify **GPIO 3**.
-    *   Section 4.1 specifies **GPIO 2** (for internal pull-ups, monitoring, and state debouncing).
-*   **The Resolution:** The firmware source code ([main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp)) uses `#define SEN_GRID_B_CONTACTOR 3`. The project plan must be updated to consistently reference GPIO 3 to avoid wiring errors during physical assembly.
+### 2.1 GPIO Configuration
+*   **The Status:** The initial project draft contained conflicting references to the sensor pin (GPIO 2 vs. GPIO 3). This has been resolved, and the specifications in [system_architecture.md](file:///home/bvarnai/workspace/lunagrid/docs/system_architecture.md) now consistently reference **GPIO 3** to align with the firmware source code ([main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp)).
 
 ### 2.2 Blocking Network Routines (Loss of State Detection)
-*   **The Issue:** In [main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp), the network connection routines `setupWifi()` and `reconnectMqtt()` are completely blocking:
-    ```cpp
-    while (WiFi.status() != WL_CONNECTED) {
-       // Loop blocks execution ...
-    }
-    while (!mqttClient.connected()) {
-       // Loop blocks execution ...
-    }
-    ```
+*   **The Issue:** In [main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp), the network connection routines `setupWifi()` and `reconnectMqtt()` are completely blocking.
 *   **The Impact:** If the Wi-Fi router loses power or the MQTT broker goes offline, the microcontroller becomes trapped inside these loops. Because the sensor pin polling is done in `loop()`, **the device will completely fail to detect contactor state transitions while attempting to reconnect.** If a grid state transition occurs during a network outage, it is permanently missed.
 *   **Mitigation:** Refactor the network connection code to be non-blocking using a simple state machine, or utilize hardware interrupts (`attachInterrupt()`) on GPIO 3 to log events to a queue regardless of whether the main loop is waiting on network tasks.
 
 ### 2.3 Missing Offline Buffering and Captive Portal
-*   **The Issue:** The project plan specifies that if the network is disconnected, the device will switch to `OFFLINE_BUFFERING` and save events with NTP timestamps to a 1MB partition in the internal LittleFS flash. It also specifies launching a local Captive Portal for Wi-Fi provisioning after 30 seconds of failure.
+*   **The Issue:** The initial project design proposed local Captive Portal Wi-Fi provisioning and saving offline telemetry events to the internal flash using LittleFS.
 *   **The Reality:** The current firmware ([main.cpp](file:///home/bvarnai/workspace/lunagrid/firmware/src/main.cpp)) does not implement LittleFS, contains no flash writing logic, lacks a Captive Portal, and simply resets the board via `ESP.restart()` if Wi-Fi cannot connect within 15 seconds.
 *   **Mitigation:** The firmware needs to be extended to mount LittleFS, track time using NTP/RTC offset buffers, and cache events locally during offline phases rather than rebooting.
 
@@ -82,6 +71,6 @@ A code audit of the current firmware ([main.cpp](file:///home/bvarnai/workspace/
 | **Electrical Fire** | **High** | Low | Series inline fuse (0.5A/1A fast-acting) on contactor coil, certified components. |
 | **Cable Insulation Breakdown** | **High** | Medium | Maintain >8mm creepage/clearance, physically separate high and low-voltage routes. |
 | **Missed State Transitions** | **Medium** | High | Rewrite network connection code to be non-blocking; use hardware interrupts instead of polling. |
-| **Data Loss During Outages** | **Medium** | High | Implement LittleFS caching and NTP local offset queue as described in the project plan. |
+| **Data Loss During Outages** | **Medium** | High | Implement LittleFS caching and NTP local offset queue (planned future enhancements). |
 | **Unsigned OTA Hijack** | **High** | Low | Implement binary signature verification on the ESP32 before writing to flash. |
 

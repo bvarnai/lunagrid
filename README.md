@@ -22,6 +22,18 @@ A low-cost, end-user IoT device designed to monitor grid power status and log th
 
 ---
 
+## Hardware and Web Dashboard Demo
+
+Here is a preview of the physical DIY board and the Project Lunagrid web interface:
+
+### Web Console Dashboard
+![Lunagrid Web Dashboard](docs/lunagrid_dashboard.jpg)
+
+### DIY Hardware Board
+![Lunagrid DIY Board](docs/demo_board.jpg)
+
+---
+
 ## 1. Monorepo Directory Index
 
 This project is structured as a monorepo containing all software layers, physical models, configurations, and deployment tooling:
@@ -39,7 +51,7 @@ This project is structured as a monorepo containing all software layers, physica
 
 Explore our design and guide files:
 - **[Electrical Safety & Risk Review](file:///home/bvarnai/workspace/lunagrid/docs/electrical_safety_review.md):** Critical engineering review of mains hazards, galvanic isolation failures, overcurrent protection, and code compliance.
-- **[Project Plan & Specification](file:///home/bvarnai/workspace/lunagrid/docs/lunagrid_project_plan.md):** Complete specifications including the hardware contactor wiring and cloud architecture.
+- **[System Architecture & Specification](file:///home/bvarnai/workspace/lunagrid/docs/system_architecture.md):** Complete specifications including the hardware contactor wiring, firmware engine, and cloud architecture.
 - **[Firmware Development Guide](file:///home/bvarnai/workspace/lunagrid/docs/firmware_development.md):** Environment setups, WSL2 port authorization, and PlatformIO flashing commands.
 - **[Firmware Release & Rollout Guide](file:///home/bvarnai/workspace/lunagrid/docs/firmware_release_guide.md):** Step-by-step firmware build, Nginx hosting, portal registration, and remote update commands.
 - **[EV Charging Automation Guide](file:///home/bvarnai/workspace/lunagrid/docs/ev_charging_automation.md):** Configuration steps for local scripts, webhooks, or MQTT to automate EV charging schedules.
