@@ -67,30 +67,37 @@ This is a reliable way to wake up a Skoda Enyaq because Home Assistant handles s
 
 ---
 
-### Recipe B: Local Python script (`tools/wake_enyaq.py`)
-If you prefer a standalone script that connects directly to the Skoda Connect API without Home Assistant:
+### Recipe B: Local Shell Script Execution
+If you prefer to run a custom local script (Python, Bash, Node.js, etc.) on grid tariff state changes:
 
-1. **Setup the Virtual Environment** in the project directory to isolate dependencies:
-   ```bash
-   python3 -m venv tools/.venv
-   source tools/.venv/bin/activate
-   pip install --upgrade pip
-   pip install myskoda aiohttp
+1. **Create your script**:
+   Write a script that executes the actions you want when the contactor switches. The backend will execute your script on both ON and OFF transitions, setting the environment variable `EV_STATE` to `"on"` or `"off"` dynamically.
+   
+   Example in Python (`tools/custom_trigger.py`):
+   ```python
+   import os
+   import sys
+
+   # The state is passed either as an environment variable or as a CLI argument
+   state = os.environ.get("EV_STATE")  # "on" or "off"
+   print(f"Received B-tariff state: {state}")
+   
+   if state == "on":
+       # Put your ON transition logic here (e.g. starting charging/wakeups)
+       pass
+   elif state == "off":
+       # Put your OFF transition logic here (e.g. suspending charging)
+       pass
    ```
-2. **Configure your credentials**:
-   Open `tools/wake_enyaq.py` and input your email, password, and vehicle VIN, or set them as environment variables:
-   ```bash
-   export SKODA_EMAIL="your_account_email"
-   export SKODA_PASSWORD="your_password"
-   export VEHICLE_VIN="your_vin"
-   ```
-3. **Configure the Lunagrid Portal**:
-   - Set Type to **Local Shell Script / CLI (run on both transitions)**.
-   - Set Target Command to:
+
+2. **Configure the Lunagrid Portal**:
+   - Navigate to the **Locations & Devices** tab.
+   - Under your location's **EV Charging Automation** panel, select Type: **Local Shell Script / CLI**.
+   - Set **Script Command** to the shell command required to run your script, using the optional `{state}` placeholder if you want to pass it as an argument:
      ```bash
-     tools/.venv/bin/python tools/wake_enyaq.py
+     python3 tools/custom_trigger.py {state}
      ```
-     *Note: The backend executes the script on both ON and OFF. It sets the environment variable `EV_STATE` to `"on"` or `"off"`, and replaces any `{state}` placeholder in the command string.*
+     *Note: The backend replaces any `{state}` placeholder in the command string with `"on"` or `"off"` dynamically, and sets `EV_STATE` and `LUNAGRID_STATE` environment variables in the execution context.*
 
 ---
 
