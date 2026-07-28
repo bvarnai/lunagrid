@@ -1,6 +1,6 @@
 # System Architecture & Specifications - Project Lunagrid
 
-This document outlines the system architecture, hardware requirements, communication protocols, firmware behavior, and cloud ingestion pipeline for **Project Lunagrid**, a low-cost, safety-first, end-user IoT device designed to monitor grid power status and log the active windows of the switched controlled tariff ("éjszakai áram") in Hungary.
+This document outlines the system architecture, hardware requirements, communication protocols, firmware behavior, and cloud ingestion pipeline for **Project Lunagrid**, a low-cost, safety-first IoT device designed to monitor grid power status and log the active windows of the switched controlled tariff ("éjszakai áram") in Hungary.
 
 ---
 
@@ -151,7 +151,7 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
 *   **Relational Metadata Registry:** An SQLite database handles the 1-to-1 mappings of physical devices to locations. This database path is configurable via `DATABASE_PATH` and persisted across container rebuilds via a Docker named volume (`backend-db` mapped to `/data`).
 *   **InfluxDB Retention Policy:** The `lunagrid-telemetry` bucket has an initial retention policy set to **30 days (`30d`)** in `docker-compose.yml` to automatically purge high-frequency raw 2s telemetry signals and prevent disk space exhaustion.
 
-### 5.3 Visualization & End-User Interface
+### 5.3 Visualization & User Interface
 *   **Single-Page React Portal:** Built as a tabbed web interface optimized for modern desktop layouts:
     1.  **Dashboard Tab:**
         *   **Grid State Hero:** Real-time B-tariff status reading either `B-Tariff ON` (Green) or `B-Tariff OFF` (Red).

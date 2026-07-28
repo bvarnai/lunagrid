@@ -2,7 +2,13 @@
 
 [![CI](https://github.com/bvarnai/lunagrid/actions/workflows/ci.yml/badge.svg)](https://github.com/bvarnai/lunagrid/actions)
 
-A low-cost, end-user IoT device designed to monitor grid power status and log the active windows of the switched controlled tariff ("éjszakai áram" or "B-tarifa") in Hungary.
+A complete IoT monitoring solution and web console designed to track grid power status and log the active windows of the switched controlled tariff ("éjszakai áram" or "B-tarifa") in Hungary.
+
+This monorepo contains all components of the system:
+* **ESP32-C3 Firmware:** Low-cost edge sensor node that monitors mains contactor state transitions.
+* **Telemetry Server (Backend):** SQLite & InfluxDB-based ingestion engine that stores high-frequency telemetry and calculates availability and compliance metrics.
+* **Web Portal (Frontend):** Modern, dark-mode React dashboard to view real-time state, historical compliance statistics, and configure away schedules.
+* **Home Automation & Smart Charging Integrations:** Native support for local shell script execution, webhooks, and MQTT triggers (with out-of-the-box configurations for **Home Assistant** and **EVCC** smart charging controllers).
 
 ---
 
