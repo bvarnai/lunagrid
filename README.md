@@ -12,6 +12,12 @@ This monorepo contains all components of the system:
 
 ---
 
+## 📖 Project Story
+
+The story behind this project is that I bought an EV and wanted to charge it from the cheaper B-Tariff with a simple plug-in Type 2 dumb charger. Sadly, the car was only charging for 1–2 hours during the night. I had to debug first if it was the car or the grid. After ruling out a grid issue, I found out that the car goes into deep sleep and doesn't detect power when it's plugged in. With the help of EVCC integration, the car is woken up with its factory API when power becomes available.
+
+---
+
 ## ⚠️ DANGER: HIGH VOLTAGE WARNING & DISCLAIMER
 
 > [!CAUTION]
