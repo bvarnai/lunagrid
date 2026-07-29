@@ -370,14 +370,14 @@ app.get('/api/locations/:id/history/range', async (req, res) => {
       return res.json([]);
     }
 
-    // Parse chosen date and establish range: [Target - 1 day, Target + 2 days] (Z-aligned)
+    // Parse chosen date and establish range: [Target - 2 days, Target + 3 days] (covers full 3-day window across all timezone offsets)
     const targetDate = new Date(dateParam);
     if (isNaN(targetDate.getTime())) {
       return res.status(400).json({ error: 'Invalid date parameter format' });
     }
 
-    const startDate = new Date(targetDate.getTime() - 24 * 60 * 60 * 1000);
-    const stopDate = new Date(targetDate.getTime() + 2 * 24 * 60 * 60 * 1000); // +2 days to cover target + 1 day completely (exclusive stop)
+    const startDate = new Date(targetDate.getTime() - 2 * 24 * 60 * 60 * 1000); // -2 days to cover local time offsets before UTC midnight
+    const stopDate = new Date(targetDate.getTime() + 3 * 24 * 60 * 60 * 1000); // +3 days to cover local time offsets after UTC midnight
 
     // Secure Flux Query targeting absolute timestamp range
     const fluxQuery = `from(bucket: "lunagrid-telemetry")
