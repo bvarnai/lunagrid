@@ -117,7 +117,7 @@ This document provides a highly structured, technical template for designing, sc
 *   **Hot Path (Real-time Processing):** Ingestion -> Managed Message Broker -> Stream Analytics Engine (e.g., Apache Flink) -> Time-Series Database (e.g., InfluxDB / TimescaleDB).
 *   **Cold Path (Archival/ML Training):** Ingestion -> Object Storage (e.g., AWS S3 / Azure Blob Storage) saved in Apache Parquet format partitioned by `YYYY/MM/DD`.
 
-### 5.3 Visualization & End-User Interface
+### 5.3 Visualization & User Interface
 *   **Dashboard Stack:** (e.g., Grafana dashboard, custom React web app leveraging WebSockets for real-time state telemetry).
 *   **Downstream APIs:** REST API and gRPC endpoints for third-party enterprise resource planning (ERP) systems integration.
 

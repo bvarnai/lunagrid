@@ -7,9 +7,9 @@
 
 // --- Configuration ---
 // Modify these to match your local WiFi network and host machine IP
-const char* ssid = "VBL";
-const char* password = "Mentor19";
-const char* mqtt_server = "mqtt.nas48.vbl.hu"; // Replace with your NAS local IP or DNS
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+const char* mqtt_server = "YOUR_MQTT_BROKER_IP"; // Replace with your NAS local IP or DNS
 const int mqtt_port = 1883;
 
 const char* FIRMWARE_VERSION = "1.0.1";

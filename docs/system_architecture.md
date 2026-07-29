@@ -1,6 +1,6 @@
-# IoT Project Proposal & Specification - Project Lunagrid
+# System Architecture & Specifications - Project Lunagrid
 
-This document outlines the system architecture, hardware requirements, communication protocols, firmware behavior, and cloud ingestion pipeline for **Project Lunagrid**, a low-cost, safety-first, end-user IoT device designed to monitor grid power status and log the active windows of the switched controlled tariff ("éjszakai áram") in Hungary.
+This document outlines the system architecture, hardware requirements, communication protocols, firmware behavior, and cloud ingestion pipeline for **Project Lunagrid**, a low-cost, safety-first IoT device designed to monitor grid power status and log the active windows of the switched controlled tariff ("éjszakai áram") in Hungary.
 
 ---
 
@@ -33,7 +33,7 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
                                                        | Home Wi-Fi Router        |
                                                        +------------+-------------+
                                                                     |
-                                                                    | MQTT over TLS (Port 8883)
+                                                                    | MQTT (Port 1883)
                                                                     v
                                                        +--------------------------+
                                                        | Cloud Ingestion          |
@@ -59,7 +59,7 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
 | Component | Specification | Selection Justification |
 | :--- | :--- | :--- |
 | **Core MCU/MPU** | ESP32-C3 Super Mini | RISC-V 32-bit single-core CPU (160MHz). Compact format, low cost, built-in cryptography and low-power modes. |
-| **RAM/Flash** | 400KB SRAM, 4MB External Flash | Fits FreeRTOS, Wi-Fi/TLS stacks, and holds enough LittleFS storage for weeks of offline buffering. |
+| **RAM/Flash** | 400KB SRAM, 4MB External Flash | Fits FreeRTOS, Wi-Fi stacks, and provides enough flash capacity for firmware features. |
 | **Operating System** | ESP-IDF / Arduino Core | Offers robust RTOS multitasking, Wi-Fi driver stability, and easy OTA implementations. |
 
 ### 2.2 Sensor & Actuator Interface Matrix
@@ -84,9 +84,9 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
 *   **Network Topology Type:** Star topology connecting to the local household Wi-Fi router.
 
 ### 3.2 Application Layer Protocol & Payload Design
-*   **Protocol:** MQTT over TLS v1.3 (MQTTS) on port 8883 for encrypted, low-overhead communication.
+*   **Protocol:** MQTT over standard TCP on port 1883 (unencrypted).
 *   **MQTT Topic Hierarchy Structure:**
-    *   Telemetry: `lunagrid/devices/{device_uuid}/telemetry` (Periodic system health: RSSI, uptime, heap).
+    *   Telemetry: `lunagrid/devices/{device_uuid}/telemetry` (Periodic system health: RSSI, uptime, heap, firmware version).
     *   State Events: `lunagrid/devices/{device_uuid}/state` (Instant updates on grid state transitions).
     *   Commands: `lunagrid/devices/{device_uuid}/cmd` (For remote reboots or OTA trigger commands).
 
@@ -102,7 +102,8 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
   },
   "status": {
     "wifi_rssi": -62,
-    "error_code": 0
+    "error_code": 0,
+    "firmware_version": "1.0.1"
   }
 }
 ```
@@ -122,37 +123,35 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
 ## 4. Firmware Engine & Edge Computing
 
 > [!NOTE]
-> For step-by-step instructions on setting up the local build environment, configuring WSL2/usbipd, and compiling/flashing the firmware, refer to the [Firmware Development Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_development.md).
+> For step-by-step instructions on setting up the local build environment, configuring WSL2/usbipd, and compiling/flashing the firmware, refer to the [Firmware Development Guide](firmware_development.md).
 
 ### 4.1 State Machine Architecture
-*   `BOOT` -> Initialize GPIOs, configure internal pull-up on GPIO 3, mount LittleFS file system, read last known state.
-*   `CONNECTING_WIFI` -> Turn on Wi-Fi, attempt connection to configured SSID. If connection fails after 30 seconds, boot local Captive Portal for Wi-Fi provisioning.
-*   `CONNECTING_MQTT` -> Establish TLS connection to MQTT Broker. Subscribe to commands topic.
-*   `MONITORING` -> Listen to interrupts on GPIO 3. Upon state change, apply debounce filter.
-*   `TRANSMITTING` -> Send MQTT event payload. If successful, confirm delivery.
-*   `OFFLINE_BUFFERING` -> If Wi-Fi/MQTT is disconnected, write state change events with NTP timestamps to LittleFS internal flash.
-*   `ERROR_HANDLING` -> Log diagnostics. Re-trigger hardware watchdog if system stalls.
+*   `BOOT` -> Initialize GPIOs, configure internal pull-up on GPIO 3, read initial contactor state.
+*   `CONNECTING_WIFI` -> Turn on Wi-Fi, attempt connection to configured SSID. If connection fails after 15 seconds, reset the ESP.
+*   `CONNECTING_MQTT` -> Establish connection to the MQTT Broker on Port 1883. Subscribe to the command topic.
+*   `MONITORING` -> Listen to state transitions on GPIO 3. Upon state change, apply debounce filter.
+*   `TRANSMITTING` -> Send MQTT state or telemetry payload.
 
 ### 4.2 Edge Processing & Analytics
 *   **Software Debouncing:** Mechanical contactors can experience contact bounce for 10–20 ms upon closure or release. The firmware implements a 100 ms software debounce window. The state of GPIO 3 must remain constant for at least 100 ms to qualify as a valid grid status transition, preventing duplicate logging.
 *   **Time Synchronization:** The device synchronizes its internal RTC using Network Time Protocol (NTP) pools (`pool.ntp.org`) immediately upon Wi-Fi connection. Timestamps are written in UNIX Epoch format.
-*   **Local Storage/Buffering Strategy:** If the home router loses power or Internet connection, telemetry events are buffered in a FIFO queue within the LittleFS partition. The flash layout reserves 1MB for buffering, which is sufficient to record thousands of transition logs. Once connection is restored, the buffered events are pushed before real-time logging resumes.
+*   **Network Outage Behavior:** In the current version, the firmware does not perform local flash buffering. If the Wi-Fi or MQTT broker is disconnected, the device attempts to reconnect in a blocking loop (for MQTT) or restarts (for Wi-Fi). Any grid state transitions that occur during a network outage will not be recorded.
 
 ---
 
 ## 5. Cloud Architecture & Data Pipeline
 
 ### 5.1 Ingestion & Message Broker
-*   **Ingestion Broker:** HiveMQ Cloud (Free Tier) or a self-hosted Eclipse Mosquitto broker running on a local server (e.g., Raspberry Pi/Home Assistant).
-*   **Authentication:** TLS certificate authority verification + MQTT Username & Password authentication.
+*   **Ingestion Broker:** Self-hosted Eclipse Mosquitto broker or HiveMQ broker running on a local server.
+*   **Authentication:** Currently configured with basic MQTT client identification without TLS.
 
 ### 5.2 Data Routing & Storage Layers
 *   **Ingestion Routing:** Telegraf agent subscribing to topic `lunagrid/devices/+/state` and writing raw fields directly to InfluxDB.
-*   **Secure API Database Bridge:** To shield InfluxDB access tokens from the web browser, the Node.js Express server acts as a secure broker. The frontend client queries standard endpoints like `GET /api/locations/:id/history` and `/api/locations/:id/compliance`, which are translated securely into Flux queries and forwarded to InfluxDB.
+*   **Secure API Database Bridge:** To shield InfluxDB access tokens from the web browser, the Node.js Express server acts as a secure bridge. The frontend client queries standard endpoints like `GET /api/locations/:id/history` and `/api/locations/:id/compliance`, which are translated securely into Flux queries and forwarded to InfluxDB.
 *   **Relational Metadata Registry:** An SQLite database handles the 1-to-1 mappings of physical devices to locations. This database path is configurable via `DATABASE_PATH` and persisted across container rebuilds via a Docker named volume (`backend-db` mapped to `/data`).
 *   **InfluxDB Retention Policy:** The `lunagrid-telemetry` bucket has an initial retention policy set to **30 days (`30d`)** in `docker-compose.yml` to automatically purge high-frequency raw 2s telemetry signals and prevent disk space exhaustion.
 
-### 5.3 Visualization & End-User Interface
+### 5.3 Visualization & User Interface
 *   **Single-Page React Portal:** Built as a tabbed web interface optimized for modern desktop layouts:
     1.  **Dashboard Tab:**
         *   **Grid State Hero:** Real-time B-tariff status reading either `B-Tariff ON` (Green) or `B-Tariff OFF` (Red).
@@ -173,12 +172,12 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
 
 ### 6.1 Hardware-to-Cloud Security Matrix
 *   **Device Identity:** Unique client ID generated from the ESP32-C3 MAC address.
-*   **Encryption in Transit:** Mandatory TLS 1.3 encryption on Port 8883.
-*   **Isolation:** The high voltage (230V AC) is isolated entirely inside the mains panel by the IKA20-11 contactor. Only low voltage dry contact wires leave the panel to connect to the ESP32-C3 enclosure, keeping the user interface completely safe. *Note: Galvanic isolation carries significant risk of breakdown under surge conditions or component failure. Please consult the [Electrical Safety & Technical Risk Review](file:///home/bvarnai/workspace/lunagrid/docs/electrical_safety_review.md) for critical warning guidelines and circuit protection recommendations.*
+*   **Encryption in Transit:** In this version, communication over MQTT is unencrypted (Port 1883). Users are encouraged to run their broker inside a private VPN (such as Tailscale) or a local VLAN to protect data and credentials from interception.
+*   **Isolation:** The high voltage (230V AC) is isolated entirely inside the mains panel by the IKA20-11 contactor. Only low voltage dry contact wires leave the panel to connect to the ESP32-C3 enclosure, keeping the user interface completely safe. *Note: Galvanic isolation carries significant risk of breakdown under surge conditions or component failure. Please consult the [Electrical Safety & Technical Risk Review](electrical_safety_review.md) for critical warning guidelines and circuit protection recommendations.*
 
 ### 6.2 Over-The-Air (OTA) Firmware Updates
-*   **Update Mechanism:** Standard ESP32 OTA update over HTTPS.
-*   **Rollback Strategy:** Dual partition scheme (OTA_0 and OTA_1) is managed by the ESP32-C3 bootloader. If the newly flashed firmware fails to connect to Wi-Fi within 120 seconds, the bootloader automatically rolls back to the previous stable partition.
+*   **Update Mechanism:** Standard ESP32 OTA update over HTTP.
+*   **Validation:** Firmware updates are executed through PlatformIO's standard `httpUpdate` client. Cryptographic signature verification is not active in this release; binaries are pulled directly from the registered rollout URL.
 
 ---
 
@@ -191,7 +190,7 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
 | **Power Supply** | USB Wall Power Supply (5V, 1A) | General Electronics | 5V 1A USB-A Charger | $5.00 |
 | **Cable** | USB-A to USB-C Cable (1m) | General Electronics | USB-C Cable | $1.00 |
 | **Enclosure** | Small ABS Plastic Enclosure IP54 | Enclosure supplier | ABS Box 80x50x26mm | $4.00 |
-| **Wiring** | Dupoint / Hookup wire for contacts | General Electronics | Solid Core Wire | $1.00 |
+| **Wiring** | Dupont / Hookup wire for contacts | General Electronics | Solid Core Wire | $1.00 |
 | **Total Hardware Cost**| | | | **$26.00** |
 
 ---
@@ -202,8 +201,28 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
 *   **Dry Contact Logic Test:** Verify that shorting GPIO 3 to GND manually triggers a state change log to serial console and publishes an MQTT payload.
 *   **Contactor Operation Test:** Connect the IKA20-11 coil to a switched 230V AC test bench. Verify the contactor clicks on/off and the dry contacts open/close reliably without overheating.
 *   **Debounce Test:** Introduce synthetic contact bouncing on the input pin to ensure the 100 ms software debounce logic successfully logs only one event.
-*   **Network Interruption Test:** Power off the Wi-Fi router. Verify the device switches to LittleFS local buffering. Turn the router back on and verify that buffered events are published with their original NTP-synchronized timestamps.
+*   **Network Reconnect Test:** Power off the Wi-Fi router. Verify the device attempts to reconnect. Turn the router back on and verify that real-time status logging resumes automatically.
 
 ### 8.2 Future Improvements
 *   **Battery/Supercapacitor Backup:** Integrate a power path charger IC (e.g., TP4056) and a small LiPo battery to allow the device to sense and log general blackouts on the "A tarifa" line.
 *   **DIN-Rail Enclosure Integration:** Mount the ESP32-C3 and its USB power supply inside a dedicated 1-module or 2-module DIN-rail plastic enclosure, placing the entire system side-by-side with the IKA20-11 contactor in the fuse box.
+
+---
+
+## 9. Implemented Capabilities vs. Known Gaps
+
+To help users understand the current maturity of Project Lunagrid, this section outlines the features currently active in the codebase versus the planned security and reliability features that are not yet implemented.
+
+### 9.1 Implemented Capabilities
+*   **Edge Grid Monitoring**: Interrupt-driven status sensing of the physical contactor (B-tariff grid line status) on GPIO 3 with a 100ms software debounce filter.
+*   **Network Telemetry**: Periodic status reports (every 5 minutes) containing Wi-Fi RSSI signal quality, system uptime, and heap size metrics.
+*   **Secure Backend Bridge**: A Node.js middleware wrapper that maps physical devices to locations in SQLite, queries historical availability and daily B-tariff compliance targets from InfluxDB, and caches local console logs.
+*   **EV Charging Automation**: A multi-channel automated dispatcher triggering third-party endpoints (Webhooks, MQTT topics, ntfy push notifications, or local shell scripts) on grid tariff transitions.
+*   **Responsive User Portal**: Renders daily availability timelines, compliance indicators, a diagnostic activity logger, and a manual/scheduled Car Away silencer mode.
+*   **Remote OTA Manager**: Handles registrations of firmware versions and triggers remote HTTP OTA rollouts to edge devices via command topics.
+
+### 9.2 Known Gaps & Planned Enhancements
+*   **Wi-Fi Captive Portal**: Currently, Wi-Fi credentials (SSID/Password) are statically hardcoded in the C++ firmware. A local Captive Portal for on-the-fly Wi-Fi provisioning is not yet implemented.
+*   **Offline Telemetry Caching**: The device lacks offline storage capability. In the event of a Wi-Fi or MQTT broker disconnection, grid state transitions that occur during the outage are not buffered on-board and are permanently lost.
+*   **Transport Layer Security (TLS/MQTTS)**: All MQTT broker communication (Port 1883) and OTA firmware updates are conducted over unencrypted TCP. Implementing secure TLS (Port 8883) with root certificate pinning is planned.
+*   **OTA Cryptographic Verification**: The firmware does not verify binary signatures. The ESP32-C3 flashes any compiled binary received from the rollout URL, which poses a security risk if the MQTT command broker is compromised.

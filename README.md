@@ -1,8 +1,16 @@
 # Project Lunagrid
 
-[![Lunagrid CI](https://github.com/bvarnai/lunagrid/actions/workflows/ci.yml/badge.svg)](https://github.com/bvarnai/lunagrid/actions)
+[![CI](https://github.com/bvarnai/lunagrid/actions/workflows/ci.yml/badge.svg)](https://github.com/bvarnai/lunagrid/actions)
 
-A low-cost, end-user IoT device designed to monitor grid power status and log the active windows of the switched controlled tariff ("éjszakai áram" or "B-tarifa") in Hungary.
+A complete IoT monitoring solution and web console designed to track grid power status and log the active windows of the switched controlled tariff ("éjszakai áram" or "B-tarifa") in Hungary.
+
+This monorepo contains all components of the system:
+* **ESP32-C3 Firmware:** Low-cost edge sensor node that monitors mains contactor state transitions.
+* **Telemetry Server (Backend):** SQLite & InfluxDB-based ingestion engine that stores high-frequency telemetry and calculates availability and compliance metrics.
+* **Web Portal (Frontend):** Modern, dark-mode React dashboard to view real-time state, historical compliance statistics, and configure away schedules.
+* **Smart Charging Integrations:** Native support for local shell script execution, webhooks, and MQTT triggers (with out-of-the-box configurations for **EVCC** smart charging controllers).
+
+> The story behind this project is that I bought an EV and wanted to charge it from the cheaper B-Tariff with a simple plug-in Type 2 dumb charger. Sadly, the car was only charging for 1–2 hours during the night. I had to debug first if it was the car or the grid. After ruling out a grid issue, I found out that the car goes into deep sleep and doesn't detect power when it's plugged in. With the help of EVCC integration, the car is woken up with its factory API when power becomes available.
 
 ---
 
@@ -18,7 +26,20 @@ A low-cost, end-user IoT device designed to monitor grid power status and log th
 > * **Overcurrent & Fire Hazard:** A short circuit or coil fault in the contactor can cause overheating or fire. A low-amperage, fast-acting in-line fuse (e.g., 500mA or 1A) **must** be wired in series with the contactor coil to protect the circuit.
 > * **No Liability:** The creators and maintainers of this project accept no responsibility or liability for any personal injury, loss of life, or property damage resulting from building, testing, or deploying this hardware.
 >
-> **For a detailed assessment of all electrical failure modes, wiring mitigations, and firmware bugs, refer to the [Electrical Safety & Technical Risk Review](file:///home/bvarnai/workspace/lunagrid/docs/electrical_safety_review.md).**
+> **For a detailed assessment of all electrical failure modes, wiring mitigations, and firmware bugs, refer to the [Electrical Safety & Technical Risk Review](docs/electrical_safety_review.md).**
+
+---
+
+## Hardware and Web Dashboard Demo
+
+Here is a preview of the physical DIY board and the Project Lunagrid web interface:
+
+### Web Console Dashboard & Settings
+![Lunagrid Web Dashboard](docs/screenshot_dashboard.png)
+![Lunagrid Web Settings](docs/screenshot_settings.png)
+
+### DIY Hardware Board
+![Lunagrid DIY Board](docs/demo_board.jpg)
 
 ---
 
@@ -26,25 +47,25 @@ A low-cost, end-user IoT device designed to monitor grid power status and log th
 
 This project is structured as a monorepo containing all software layers, physical models, configurations, and deployment tooling:
 
-- **[firmware/](file:///c:/Users/bvarnai/workspace/lunagrid/firmware/):** C++ PlatformIO core codebase for the ESP32-C3-SuperMini edge sensor node.
-- **[backend/](file:///c:/Users/bvarnai/workspace/lunagrid/backend/):** Telemetry ingestion engine and Express-based Web APIs.
-- **[frontend/](file:///c:/Users/bvarnai/workspace/lunagrid/frontend/):** Single-page React web dashboard built with Vite for viewing real-time telemetry.
-- **[infrastructure/](file:///c:/Users/bvarnai/workspace/lunagrid/infrastructure/):** Docker Compose environment configs (Mosquitto MQTT, InfluxDB, Telegraf, Grafana).
-- **[shared/](file:///c:/Users/bvarnai/workspace/lunagrid/shared/):** JSON schemas and type definitions shared across software layers.
-- **[docs/](file:///c:/Users/bvarnai/workspace/lunagrid/docs/):** System plans, setup guides, and quickstart documentation.
+- **[firmware/](firmware/):** C++ PlatformIO core codebase for the ESP32-C3-SuperMini edge sensor node.
+- **[backend/](backend/):** Telemetry ingestion engine and Express-based Web APIs.
+- **[frontend/](frontend/):** Single-page React web dashboard built with Vite for viewing real-time telemetry.
+- **[infrastructure/](infrastructure/):** Docker Compose environment configs (Mosquitto MQTT, InfluxDB, Telegraf, Grafana).
+- **[shared/](shared/):** JSON schemas and type definitions shared across software layers.
+- **[docs/](docs/):** System plans, setup guides, and quickstart documentation.
 
 ---
 
 ## 2. Documentation Index
 
 Explore our design and guide files:
-- **[Electrical Safety & Risk Review](file:///home/bvarnai/workspace/lunagrid/docs/electrical_safety_review.md):** Critical engineering review of mains hazards, galvanic isolation failures, overcurrent protection, and code compliance.
-- **[Project Plan & Specification](file:///home/bvarnai/workspace/lunagrid/docs/lunagrid_project_plan.md):** Complete specifications including the hardware contactor wiring and cloud architecture.
-- **[Firmware Development Guide](file:///home/bvarnai/workspace/lunagrid/docs/firmware_development.md):** Environment setups, WSL2 port authorization, and PlatformIO flashing commands.
-- **[Firmware Release & Rollout Guide](file:///home/bvarnai/workspace/lunagrid/docs/firmware_release_guide.md):** Step-by-step firmware build, Nginx hosting, portal registration, and remote update commands.
-- **[EV Charging Automation Guide](file:///home/bvarnai/workspace/lunagrid/docs/ev_charging_automation.md):** Configuration steps for local scripts, webhooks, or MQTT to automate EV charging schedules.
-- **[EVCC Integration & Setup Guide](file:///home/bvarnai/workspace/lunagrid/docs/evcc_integration.md):** Configuration templates for EVCC smart charging controller and dummy charger wallbox bindings.
-- **[ESPHome USB Serial Quickstart](file:///home/bvarnai/workspace/lunagrid/docs/usb_serial_quickstart.md):** Standalone reference file for basic USB binding and ESPHome setup.
+- **[Electrical Safety & Risk Review](docs/electrical_safety_review.md):** Critical engineering review of mains hazards, galvanic isolation failures, overcurrent protection, and code compliance.
+- **[System Architecture & Specification](docs/system_architecture.md):** Complete specifications including the hardware contactor wiring, firmware engine, and cloud architecture.
+- **[Firmware Development Guide](docs/firmware_development.md):** Environment setups, WSL2 port authorization, and PlatformIO flashing commands.
+- **[Firmware Release & Rollout Guide](docs/firmware_release_guide.md):** Step-by-step firmware build, Nginx hosting, portal registration, and remote update commands.
+- **[EV Charging Automation Guide](docs/ev_charging_automation.md):** Configuration steps for local scripts, webhooks, or MQTT to automate EV charging schedules.
+- **[EVCC Integration & Setup Guide](docs/evcc_integration.md):** Configuration templates for EVCC smart charging controller and dummy charger wallbox bindings.
+- **[ESPHome USB Serial Quickstart](docs/usb_serial_quickstart.md):** Standalone reference file for basic USB binding and ESPHome setup.
 
 ---
 
@@ -66,7 +87,7 @@ npm run dev
 ```
 
 ### 3.3 Compile and Upload Firmware
-Refer to the [Firmware Development Guide](file:///c:/Users/bvarnai/workspace/lunagrid/docs/firmware_development.md) for setting up WSL2 USB passthrough, then compile and flash the firmware:
+Refer to the [Firmware Development Guide](docs/firmware_development.md) for setting up WSL2 USB passthrough, then compile and flash the firmware:
 ```bash
 cd firmware
 pio run --target upload

@@ -158,7 +158,7 @@ We use PlatformIO CLI for efficient compiler toolchain isolation:
 
 ## 5. Project Configuration
 
-Create a [platformio.ini](file:///home/bvarnai/workspace/lunagrid/platformio.ini) configuration file in the project's root folder. This directs PlatformIO to use the correct Arduino core compiler settings, partitions, and libraries for the ESP32-C3-SuperMini.
+Create a [platformio.ini](../platformio.ini) configuration file in the project's root folder. This directs PlatformIO to use the correct Arduino core compiler settings, partitions, and libraries for the ESP32-C3-SuperMini.
 
 ```ini
 [env:esp32-c3-supermini]
@@ -220,6 +220,6 @@ If the upload process times out or fails to synchronise with the board (`esptool
 
 ## 7. Additional References
 
-- **Firmware Release & Rollout Guide:** [firmware_release_guide.md](file:///home/bvarnai/workspace/lunagrid/docs/firmware_release_guide.md)
-- **Standalone ESPHome Prototyping Quickstart:** [usb_serial_quickstart.md](file:///home/bvarnai/workspace/lunagrid/docs/usb_serial_quickstart.md)
-- **Project Abstract & Architecture Specs:** [lunagrid_project_plan.md](file:///home/bvarnai/workspace/lunagrid/docs/lunagrid_project_plan.md)
+- **Firmware Release & Rollout Guide:** [firmware_release_guide.md](firmware_release_guide.md)
+- **Standalone ESPHome Prototyping Quickstart:** [usb_serial_quickstart.md](usb_serial_quickstart.md)
+- **Project Abstract & Architecture Specs:** [system_architecture.md](system_architecture.md)

@@ -40,3 +40,7 @@ Thumbs.db
 venv/
 **/venv/
 **/.venv/
+
+# SQLite Databases
+*.db
+*.sqlite
