@@ -57,6 +57,7 @@ services:
       - backend-db:/data
     depends_on:
       - mosquitto
+      - influxdb
     restart: unless-stopped
 
   # Grafana Dashboard - Renders availability timelines and metrics
@@ -80,6 +81,7 @@ services:
       - "7070:7070"
     volumes:
       - ./evcc/evcc.yaml:/etc/evcc.yaml
+      - evcc-data:/root/.evcc
     depends_on:
       - backend
     restart: unless-stopped
@@ -90,3 +92,4 @@ volumes:
   influxdb-data:
   grafana-data:
   backend-db:
+  evcc-data:
