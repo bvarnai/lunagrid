@@ -10,7 +10,14 @@ This monorepo contains all components of the system:
 * **Web Portal (Frontend):** Modern, dark-mode React dashboard to view real-time state, historical compliance statistics, and configure away schedules.
 * **Smart Charging Integrations:** Native support for local shell script execution, webhooks, and MQTT triggers (with out-of-the-box configurations for **EVCC** smart charging controllers).
 
-> The story behind this project is that I bought an EV and wanted to charge it from the cheaper B-Tariff with a simple plug-in Type 2 dumb charger. Sadly, the car was only charging for 1–2 hours during the night. I had to debug first if it was the car or the grid. After ruling out a grid issue, I found out that the car goes into deep sleep and doesn't detect power when it's plugged in. With the help of EVCC integration, the car is woken up with its factory API when power becomes available.
+*Motivation & Background*
+
+I bought an EV and wanted to charge it using a cheaper B-Tariff (off-peak grid rate) paired with a simple, non-smart ("dumb") Type 2 portable charger. However, charging would consistently stop after only 1–2 hours during the night.
+After ruling out grid power supply drops, I identified the root cause: when B-tariff cuts power, the vehicle enters a deep sleep state and fails to detect when grid power returns.
+
+*Solution*
+
+Using an EVCC integration, the system monitors tariff power availability and automatically issues a wake-up command via the vehicle's OEM API as soon as grid power is restored—resuming charging reliably every night.
 
 ---
 
