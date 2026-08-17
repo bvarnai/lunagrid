@@ -30,9 +30,7 @@ const char* mqtt_server = MQTT_SERVER;
 const int mqtt_port = MQTT_PORT;
 
 // Static firmware version identifier
-const char* FIRMWARE_VERSION = "1.0.1";
-
-
+const char* FIRMWARE_VERSION = "1.0.2";
 
 // Hardware Watchdog Timeout (seconds)
 const uint32_t WDT_TIMEOUT_SECONDS = 30;

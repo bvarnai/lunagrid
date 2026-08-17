@@ -167,7 +167,7 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
         *   **Grid State Hero:** Real-time B-tariff status reading either `B-Tariff ON` (Green) or `B-Tariff OFF` (Red).
         *   **Today's Availability Strip:** A 24-segment timeline strip visualizing B-tariff active hours for the current calendar day (from 00:00 to 23:00).
         *   **Contractual Compliance (7-Day Overview):** 7 calendar blocks calculating B-tariff hours per day relative to the location's configurable Provider Contract Target (defaulting to 8.0h/day). Marks days **`🟢 COMPLIANT`** (hours >= target) or **`🔴 FAIL`** (hours < target). Renders as **`⚫ N/A`** for days with missing telemetry.
-        *   **Car Away Panel:** Supports manual toggle override and a daily automatic schedule (`From` - `To` in strict 24h format) to silence notifications when away.
+        *   **Car Away Panel:** Supports manual toggle override and a daily automatic schedule (`From` - `To` in strict 24h format) with stateful lifecycle management: triggers graceful teardown (`OFF` / standby) for active charging sessions upon activation, and automatically resumes charging (`ON`) upon deactivation when B-tariff is live.
         *   **Diagnostic Parameters:** Real-time RSSI signal quality badges, heap size, and formatted uptime.
         *   **Stretched Activity Console Logs:** Displays rolling logs with client-side local timezone formatting.
     2.  **Locations & Devices Tab:** Create locations, map device registrations, and unregister devices manually.
@@ -227,8 +227,8 @@ To help users understand the current maturity of Project Lunagrid, this section 
 *   **Edge Grid Monitoring**: Interrupt-driven status sensing of the physical contactor (B-tariff grid line status) on GPIO 3 with a 100ms software debounce filter.
 *   **Network Telemetry**: Periodic status reports (every 5 minutes) containing Wi-Fi RSSI signal quality, system uptime, and heap size metrics.
 *   **Secure Backend Bridge**: A Node.js middleware wrapper that maps physical devices to locations in SQLite, queries historical availability and daily B-tariff compliance targets from InfluxDB, and caches local console logs.
-*   **EV Charging Automation**: A multi-channel automated dispatcher triggering third-party endpoints (Webhooks, MQTT topics, ntfy push notifications, or local shell scripts) on grid tariff transitions.
-*   **Responsive User Portal**: Renders daily availability timelines, compliance indicators, a diagnostic activity logger, and a manual/scheduled Car Away silencer mode.
+*   **EV Charging Automation**: A multi-channel automated dispatcher triggering third-party endpoints (Webhooks, MQTT topics, ntfy push notifications, or local shell scripts) on grid tariff transitions with graceful session termination on Car Away.
+*   **Responsive User Portal**: Renders daily availability timelines, compliance indicators, a diagnostic activity logger, and a manual/scheduled Car Away state controller.
 *   **Remote OTA Manager**: Handles registrations of firmware versions and triggers remote HTTP OTA rollouts to edge devices via command topics.
 
 ### 9.2 Known Gaps & Planned Enhancements

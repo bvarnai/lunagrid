@@ -47,10 +47,10 @@ const getAppVersion = (): string => {
   try {
     const packageJsonPath = path.resolve(__dirname, '../package.json');
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
-    return packageJson.version || '1.0.1';
+    return packageJson.version || '1.0.2';
   } catch (error) {
-    console.warn('[VERSION] Could not dynamically load version from package.json, falling back to 1.0.1', error);
-    return '1.0.1';
+    console.warn('[VERSION] Could not dynamically load version from package.json, falling back to 1.0.2', error);
+    return '1.0.2';
   }
 };
 const appVersion = getAppVersion();
@@ -161,6 +161,8 @@ app.patch('/api/locations/:id/notifications', async (req, res) => {
       return res.status(404).json({ error: 'Location not found' });
     }
 
+    const previousCarAway = isLocationCarAwayActive(loc);
+
     let val = 0;
     if (req.body.override === 'auto' || req.body.notifications_disabled === 0) {
       val = 0; // Clear manual override, revert to Auto schedule
@@ -191,6 +193,10 @@ app.patch('/api/locations/:id/notifications', async (req, res) => {
     console.log(msg);
     addLog(msg);
 
+    // Gracefully terminate or resume EV automations on transition
+    await handleCarAwayTransition(id, previousCarAway.active, statusInfo.active, statusText);
+    lastKnownCarAwayState[id] = statusInfo.active;
+
     res.json({
       status: 'success',
       locationId: id,
@@ -213,6 +219,9 @@ app.patch('/api/locations/:id/schedule', async (req, res) => {
     if (!loc) {
       return res.status(404).json({ error: 'Location not found' });
     }
+
+    const previousCarAway = isLocationCarAwayActive(loc);
+
     const fromTime = from || '08:00';
     const toTime = to || '17:00';
     await updateLocationCarAwaySchedule(id, Boolean(enabled), fromTime, toTime);
@@ -223,6 +232,10 @@ app.patch('/api/locations/:id/schedule', async (req, res) => {
     const msg = `[SYSTEM] Location "${loc.name}" (${id}) Car Away schedule set to ${enabled ? 'ENABLED' : 'DISABLED'} (${fromTime} - ${toTime}).`;
     console.log(msg);
     addLog(msg);
+
+    // Gracefully terminate or resume EV automations on transition
+    await handleCarAwayTransition(id, previousCarAway.active, statusInfo.active, statusInfo.active ? 'Scheduled window updated' : 'Scheduled window disabled');
+    lastKnownCarAwayState[id] = statusInfo.active;
 
     res.json({
       status: 'success',
@@ -656,7 +669,12 @@ async function executeAutomation(auto: any, state: 'on' | 'off', location: { id:
   return { success: false, error: 'Unknown integration type' };
 }
 
-async function triggerEvAutomation(locationId: string, state: 'on' | 'off', isManualTest: boolean = false) {
+async function triggerEvAutomation(
+  locationId: string, 
+  state: 'on' | 'off', 
+  isManualTest: boolean = false,
+  forceBypassCarAwayGuard: boolean = false
+) {
   try {
     const location = await getLocationById(locationId);
     if (!location) {
@@ -665,7 +683,7 @@ async function triggerEvAutomation(locationId: string, state: 'on' | 'off', isMa
     }
 
     const carAwayStatus = isLocationCarAwayActive(location);
-    if (carAwayStatus.active && !isManualTest) {
+    if (carAwayStatus.active && !isManualTest && !forceBypassCarAwayGuard) {
       const reasonText = carAwayStatus.reason === 'schedule'
         ? `Scheduled window (${location.car_away_schedule_from} - ${location.car_away_schedule_to})`
         : 'Manual toggle';
@@ -704,6 +722,63 @@ async function triggerEvAutomation(locationId: string, state: 'on' | 'off', isMa
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
+
+// In-memory cache tracking last known Car Away active state for scheduled transition detection
+const lastKnownCarAwayState: Record<string, boolean> = {};
+
+// Helper function to gracefully terminate or resume EV automations when Car Away status transitions
+async function handleCarAwayTransition(
+  locationId: string,
+  wasActive: boolean,
+  nowActive: boolean,
+  reasonText: string
+) {
+  if (wasActive === nowActive) return;
+
+  const loc = await getLocationById(locationId);
+  if (!loc) return;
+
+  const device = await getDeviceByLocationId(locationId);
+  const isGridCurrentlyActive = device && telemetryCache[device.id]?.gridActive;
+
+  if (!wasActive && nowActive) {
+    // Car Away ACTIVATED: If B-tariff / charging was active, gracefully terminate downstream actors to OFF/standby
+    if (isGridCurrentlyActive) {
+      const tearDownMsg = `[EV AUTOMATION] Location "${loc.name}" (${locationId}) entered Car Away mode [${reasonText}] while B-tariff is ACTIVE. Gracefully terminating downstream charging actors (state: OFF).`;
+      console.log(tearDownMsg);
+      addLog(tearDownMsg);
+      await triggerEvAutomation(locationId, 'off', false, true);
+    }
+  } else if (wasActive && !nowActive) {
+    // Car Away DEACTIVATED (Car returned home): If B-tariff is active right now, automatically resume charging to ON
+    if (isGridCurrentlyActive) {
+      const resumeMsg = `[EV AUTOMATION] Location "${loc.name}" (${locationId}) exited Car Away mode [${reasonText}] while B-tariff is ACTIVE. Resuming charging for present vehicle (state: ON).`;
+      console.log(resumeMsg);
+      addLog(resumeMsg);
+      await triggerEvAutomation(locationId, 'on', false, false);
+    }
+  }
+}
+
+// Periodic schedule watcher: tracks Car Away schedule transitions (e.g. 08:00 start, 17:00 end)
+const checkCarAwaySchedules = async () => {
+  try {
+    const locations = await getAllLocations();
+    for (const loc of locations) {
+      const statusInfo = isLocationCarAwayActive(loc);
+      const previousState = lastKnownCarAwayState[loc.id];
+      if (previousState !== undefined && previousState !== statusInfo.active) {
+        const reasonText = statusInfo.active
+          ? (statusInfo.reason === 'schedule' ? `Scheduled window (${loc.car_away_schedule_from} - ${loc.car_away_schedule_to})` : 'Manual override')
+          : 'Schedule window ended';
+        await handleCarAwayTransition(loc.id, previousState, statusInfo.active, reasonText);
+      }
+      lastKnownCarAwayState[loc.id] = statusInfo.active;
+    }
+  } catch (err) {
+    console.error('[SCHEDULE WATCHER] Error checking Car Away schedules:', err);
+  }
+};
 
 // --- Automations API ---
 
@@ -1059,6 +1134,14 @@ const startServer = async () => {
   try {
     await initDb();
     console.log('[DATABASE] SQLite database initialized successfully.');
+
+    // Initialize in-memory Car Away state cache
+    const initialLocations = await getAllLocations();
+    for (const loc of initialLocations) {
+      lastKnownCarAwayState[loc.id] = isLocationCarAwayActive(loc).active;
+    }
+    // Start background watcher ticker to monitor daily schedule entries/exits
+    setInterval(checkCarAwaySchedules, 15000);
   } catch (err) {
     console.error('[DATABASE] Failed to initialize SQLite database:', err);
     process.exit(1);

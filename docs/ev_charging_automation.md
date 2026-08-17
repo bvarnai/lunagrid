@@ -33,14 +33,17 @@ Under the **Locations & Devices** tab, each location card exposes an **EV Chargi
    - For webhooks and ntfy, enter the target URL.
    - For MQTT, enter the topic name (e.g. `evcc/charger/status`).
    - For scripts, enter the shell command. Use the `{state}` placeholder which will be replaced with `"on"` or `"off"` dynamically.
-3. **Car Away Toggle & Daily Automatic Schedule**:
+4. **Car Away Toggle, Graceful Session Teardown & Daily Automatic Schedule**:
    - Located in the **Car Away** panel on the **Dashboard**.
    - Supports both **Manual Override** toggle and a **Daily Automatic Schedule** (`From` - `To` time window, e.g. `08:00` - `17:00`).
-   - When active (via manual toggle or automatically during the scheduled window), B-tariff state transition notifications and wakeups are silenced. Turning it OFF resumes notifications. Manual test triggers remain available anytime.
-4. **Custom Payloads / Headers (JSON)**:
+   - **Semantic Meaning**: "Car Away" implicitly indicates that the EV is absent from the location (EV charging is OFF / B-tariff is inactive for the vehicle).
+   - **Graceful Termination on Activation**: If Car Away is enabled (manually or when entering the scheduled window) while B-tariff is actively ON and charging is underway, the backend automatically issues a graceful teardown (`state: "off"`) to all configured integrations (e.g. MQTT publishes `"A"` with retain, Webhooks receive `B_TARIFF_OFF`, scripts receive `EV_STATE=off`). This prevents external actors like EVCC or Home Assistant from remaining in an inconsistent "Charging" state while the car is away.
+   - **Automatic Resumption on Car Return**: When Car Away is deactivated (manually or schedule window ends), the backend re-evaluates the current B-tariff grid state. If B-tariff is active at that moment, it automatically dispatches an `ON` transition to immediately resume charging without waiting for the next grid toggle cycle.
+   - **Continuous Schedule Watcher**: A background evaluator continuously tracks schedule windows and executes graceful teardown and resumption transitions seamlessly.
+5. **Custom Payloads / Headers (JSON)**:
    - **Webhooks/ntfy**: Custom headers (e.g. `{"Authorization": "Bearer token"}`).
    - **MQTT**: Custom state payloads mapped as `{"on": "C", "off": "A"}`. If omitted, defaults to `"C"` and `"A"`.
-5. **Test Automation (ON)** (Button): Manually triggers the integration instantly from the backend with state `"on"` to verify that it executes successfully. Test logs are printed to the **Activity Console** at the bottom of the main dashboard.
+6. **Test Automation (ON)** (Button): Manually triggers the integration instantly from the backend with state `"on"` to verify that it executes successfully. Test logs are printed to the **Activity Console** at the bottom of the main dashboard.
 
 ---
 
