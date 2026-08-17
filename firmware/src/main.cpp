@@ -24,14 +24,14 @@
 #define MQTT_PORT 1883
 #endif
 
-#ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "1.0.1"
-#endif
-
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 const char* mqtt_server = MQTT_SERVER;
 const int mqtt_port = MQTT_PORT;
+
+// Static firmware version identifier
+const char* FIRMWARE_VERSION = "1.0.1";
+
 
 
 // Hardware Watchdog Timeout (seconds)

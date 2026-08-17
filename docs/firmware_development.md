@@ -186,19 +186,19 @@ lib_deps =
 ## 6. Build, Flashing & Monitoring Workflow
 
 ### 6.1 Build-Time Credential & Parameter Injection
-To prevent committing sensitive Wi-Fi credentials or broker endpoints to Git, parameters can be dynamically injected at compile time using the `PLATFORMIO_BUILD_FLAGS` environment variable or `-D` compiler flags.
+To prevent committing sensitive Wi-Fi credentials or broker endpoints to Git, network parameters can be dynamically injected at compile time using the `PLATFORMIO_BUILD_FLAGS` environment variable or `-D` compiler flags. The firmware version itself remains statically defined in `firmware/src/main.cpp` (`const char* FIRMWARE_VERSION = "1.0.1";`).
 
 Available configuration macros:
 * `WIFI_SSID`: Target Wi-Fi network SSID (e.g. `"HomeNetwork"`).
 * `WIFI_PASSWORD`: Target Wi-Fi WPA2 password.
 * `MQTT_SERVER`: IP address or DNS hostname of your local MQTT broker (e.g. `"192.168.1.100"` or `"nas48.vbl.hu"`).
 * `MQTT_PORT`: MQTT broker port (defaults to `1883`).
-* `FIRMWARE_VERSION`: Version string identifier (e.g. `"1.1.0"`).
 
 **Example compilation with injected credentials:**
 ```bash
-PLATFORMIO_BUILD_FLAGS='-DWIFI_SSID=\"MyHomeWiFi\" -DWIFI_PASSWORD=\"SecretPass\" -DMQTT_SERVER=\"192.168.1.100\" -DFIRMWARE_VERSION=\"1.1.0\"' pio run
+PLATFORMIO_BUILD_FLAGS='-DWIFI_SSID=\"MyHomeWiFi\" -DWIFI_PASSWORD=\"SecretPass\" -DMQTT_SERVER=\"192.168.1.100\"' pio run
 ```
+
 
 ### 6.2 Basic Workflow Commands
 Use these commands inside your project root to manage compilation and deployment:
