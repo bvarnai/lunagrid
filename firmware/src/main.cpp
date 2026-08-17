@@ -7,13 +7,32 @@
 #include <esp_task_wdt.h>
 
 // --- Configuration ---
-// Modify these to match your local WiFi network and host machine IP
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
-const char* mqtt_server = "YOUR_MQTT_BROKER_IP"; // Replace with your NAS local IP or DNS
-const int mqtt_port = 1883;
+// Default placeholders: Override at build-time using -D compiler flags or PLATFORMIO_BUILD_FLAGS
+#ifndef WIFI_SSID
+#define WIFI_SSID "YOUR_WIFI_SSID"
+#endif
 
-const char* FIRMWARE_VERSION = "1.0.1";
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+#endif
+
+#ifndef MQTT_SERVER
+#define MQTT_SERVER "YOUR_MQTT_BROKER_IP"
+#endif
+
+#ifndef MQTT_PORT
+#define MQTT_PORT 1883
+#endif
+
+#ifndef FIRMWARE_VERSION
+#define FIRMWARE_VERSION "1.0.1"
+#endif
+
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
+const char* mqtt_server = MQTT_SERVER;
+const int mqtt_port = MQTT_PORT;
+
 
 // Hardware Watchdog Timeout (seconds)
 const uint32_t WDT_TIMEOUT_SECONDS = 30;

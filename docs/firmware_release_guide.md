@@ -6,23 +6,17 @@ This document provides a step-by-step workflow for compiling, hosting, registeri
 
 ## 1. Prepare and Compile the Firmware
 
-Before compiling the firmware, you must update the version tag inside the source code:
+You can configure target network credentials, broker endpoints, and target version either by setting default macros in `firmware/src/main.cpp` or dynamically injecting them at compile time via `PLATFORMIO_BUILD_FLAGS`:
 
-1. **Open the C++ source file**:
-   Locate `firmware/src/main.cpp` and find the version constant near the top:
-   ```cpp
-   const char* FIRMWARE_VERSION = "1.1.0"; // Increment this version (e.g. 1.0.0 -> 1.1.0)
-   ```
-   *Note: The target version string in the database must exactly match this string to satisfy verification checks.*
-
-2. **Compile the binary**:
-   Run the PlatformIO compiler from the `firmware/` directory:
+1. **Compile the release binary with injected flags**:
+   Run the PlatformIO compiler from the `firmware/` directory with the desired target release version and production network credentials:
    ```bash
-   pio run
+   PLATFORMIO_BUILD_FLAGS='-DFIRMWARE_VERSION=\"1.1.0\" -DWIFI_SSID=\"YourProductionSSID\" -DWIFI_PASSWORD=\"YourProductionPassword\" -DMQTT_SERVER=\"nas48.vbl.hu\"' pio run
    ```
-   
-3. **Locate the compiled binary**:
-   Once compile completes, the compiled binary is located at:
+   *Note: The target version string in the web portal release manager must exactly match the `FIRMWARE_VERSION` compiled into the binary.*
+
+2. **Locate the compiled binary**:
+   Once compilation completes, the binary is located at:
    `firmware/.pio/build/esp32-c3-supermini/firmware.bin`
 
 ---
