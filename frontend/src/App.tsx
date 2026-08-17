@@ -127,6 +127,8 @@ export default function App() {
     return localStorage.getItem('lunagrid_mock_mode') === 'true';
   });
   const [tempForceMockMode, setTempForceMockMode] = useState<boolean>(isMockMode);
+  const FRONTEND_VERSION = '1.0.2';
+  const [backendVersion, setBackendVersion] = useState<string | null>(null);
   const [isBackendOnline, setIsBackendOnline] = useState<boolean>(false);
   const isBackendConnected = !isMockMode && isBackendOnline;
   const [logs, setLogs] = useState<string[]>([]);
@@ -262,6 +264,19 @@ export default function App() {
         if (relRes.ok) {
           const relData = await relRes.json();
           setReleases(relData);
+        }
+
+        // Fetch backend health/version
+        try {
+          const healthRes = await fetch(`${apiBaseUrl}/api/health`);
+          if (healthRes.ok) {
+            const healthData = await healthRes.json();
+            if (healthData.version) {
+              setBackendVersion(healthData.version);
+            }
+          }
+        } catch {
+          // Ignore non-critical health fetch error
         }
 
         // Auto-select first location if none selected or the selected one is invalid (using functional updater to avoid stale closures)
@@ -3212,6 +3227,63 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Minimal Modern Footer */}
+      <footer style={{
+        marginTop: '3.5rem',
+        paddingTop: '1.25rem',
+        paddingBottom: '0.5rem',
+        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '0.75rem',
+        fontSize: '0.8rem',
+        color: '#64748b'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontWeight: 600, color: '#94a3b8' }}>Project Lunagrid</span>
+          <span>•</span>
+          <span>Telemetry & Tariff Monitor</span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            padding: '0.2rem 0.55rem',
+            borderRadius: '0.375rem'
+          }}>
+            <span style={{ color: '#64748b' }}>Frontend:</span>
+            <span style={{ color: '#38bdf8', fontWeight: 600 }}>v{FRONTEND_VERSION}</span>
+          </span>
+
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            padding: '0.2rem 0.55rem',
+            borderRadius: '0.375rem'
+          }}>
+            <span style={{ color: '#64748b' }}>Backend:</span>
+            {isBackendOnline && backendVersion ? (
+              <span style={{ color: '#10b981', fontWeight: 600 }}>v{backendVersion}</span>
+            ) : isBackendOnline ? (
+              <span style={{ color: '#10b981', fontWeight: 600 }}>Connected</span>
+            ) : isMockMode ? (
+              <span style={{ color: '#f59e0b', fontWeight: 600 }}>Mock Mode</span>
+            ) : (
+              <span style={{ color: '#ef4444', fontWeight: 600 }}>Offline</span>
+            )}
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }
