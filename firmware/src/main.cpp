@@ -4,6 +4,7 @@
 #include <time.h>
 #include <HTTPUpdate.h>
 #include <ArduinoJson.h>
+#include <esp_task_wdt.h>
 
 // --- Configuration ---
 // Modify these to match your local WiFi network and host machine IP
@@ -13,6 +14,9 @@ const char* mqtt_server = "YOUR_MQTT_BROKER_IP"; // Replace with your NAS local 
 const int mqtt_port = 1883;
 
 const char* FIRMWARE_VERSION = "1.0.1";
+
+// Hardware Watchdog Timeout (seconds)
+const uint32_t WDT_TIMEOUT_SECONDS = 30;
 
 // GPIO Pins
 #define SEN_GRID_B_CONTACTOR 3
@@ -37,6 +41,16 @@ const unsigned long debounceDelay = 100; // 100ms debounce from plan
 // Telemetry timer
 unsigned long lastTelemetryTime = 0;
 const unsigned long telemetryInterval = 300000; // Send telemetry health every 5 minutes (300s)
+
+// Non-blocking WiFi recovery timers
+unsigned long lastWifiRetry = 0;
+const unsigned long wifiRetryInterval = 10000; // 10s between reconnect attempts
+unsigned long lastWifiDisconnectTime = 0;
+const unsigned long wifiRebootTimeout = 300000; // Reboot if disconnected for > 5 minutes (300s)
+
+// Non-blocking MQTT recovery timers
+unsigned long lastMqttRetry = 0;
+const unsigned long mqttRetryInterval = 5000; // 5s between MQTT retries
 
 // LED status flashing
 unsigned long lastLedFlashTime = 0;
@@ -134,40 +148,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-// Connect to WiFi
-void setupWifi() {
-  delay(10);
-  Serial.println();
-  Serial.print("[WIFI] Connecting to SSID: ");
-  Serial.println(ssid);
-
-  WiFi.begin(ssid, password);
-
-  int attempt = 0;
-  while (WiFi.status() != WL_CONNECTED) {
-    // Flash status LED quickly while connecting
-    digitalWrite(LED_STATUS_BOARD, ledState ? HIGH : LOW);
-    ledState = !ledState;
-    delay(250);
-    Serial.print(".");
-    attempt++;
-    if (attempt > 60) { // Reset if we can't connect after 15 seconds
-      Serial.println("\n[WIFI] Connection failed. Resetting ESP...");
-      ESP.restart();
-    }
-  }
-
-  digitalWrite(LED_STATUS_BOARD, LOW); // Turn off LED
-  Serial.println("");
-  Serial.println("[WIFI] Connected successfully!");
-  Serial.print("[WIFI] IP Address: ");
-  Serial.println(WiFi.localIP());
-
-  // Configure NTP for time synchronization
-  Serial.println("[TIME] Configuring SNTP...");
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-}
-
 // Publish B-tariff Grid State transition to MQTT broker
 void publishGridState(bool active) {
   char payload[256];
@@ -213,39 +193,125 @@ void publishTelemetry(bool active) {
   digitalWrite(LED_STATUS_BOARD, LOW);
 }
 
-// Connect to MQTT Broker
-void reconnectMqtt() {
-  // Loop until we're reconnected
-  while (!mqttClient.connected()) {
-    Serial.print("[MQTT] Attempting connection to broker: ");
-    Serial.print(mqtt_server);
-    Serial.print(":");
-    Serial.println(mqtt_port);
-    
-    // Attempt to connect
-    if (mqttClient.connect(deviceId)) {
-      Serial.println("[MQTT] Connected successfully!");
-      
-      // Subscribe to remote command topic
-      mqttClient.subscribe(cmdTopic);
-      Serial.print("[MQTT] Subscribed to topic: ");
-      Serial.println(cmdTopic);
-      
-      // Publish initial state upon connection
-      publishGridState(debouncedGridActive);
-      publishTelemetry(debouncedGridActive);
-    } else {
-      Serial.print("[MQTT] Connection failed, rc=");
-      Serial.print(mqttClient.state());
-      Serial.println(". Retrying in 5 seconds...");
-      
-      // Flash status LED slowly while MQTT is retrying
-      for (int i = 0; i < 10; i++) {
-        digitalWrite(LED_STATUS_BOARD, ledState ? HIGH : LOW);
-        ledState = !ledState;
-        delay(500);
+// Setup and initial WiFi configuration
+void setupWifi() {
+  Serial.println();
+  Serial.print("[WIFI] Initializing WiFi for SSID: ");
+  Serial.println(ssid);
+
+  // Configure Wi-Fi station parameters
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(false);
+
+  // Disable 802.11 modem sleep to maintain solid beacon lock on low/fair signal
+  WiFi.setSleep(false);
+
+  // Maximize TX power for weak signal environments
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+
+  // Register asynchronous WiFi event handlers for diagnostics and clean state management
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    Serial.printf("[WIFI EVENT] Disconnected! Reason code: %d\n", info.wifi_sta_disconnected.reason);
+  }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    Serial.println("[WIFI EVENT] Connected to Access Point.");
+  }, ARDUINO_EVENT_WIFI_STA_CONNECTED);
+
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    Serial.print("[WIFI EVENT] Obtained IP address: ");
+    Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
+  }, ARDUINO_EVENT_WIFI_STA_GOT_IP);
+
+  WiFi.begin(ssid, password);
+
+  // Initial connection attempt with timeout
+  int attempt = 0;
+  while (WiFi.status() != WL_CONNECTED && attempt < 40) { // Up to 10s wait during boot
+    esp_task_wdt_reset();
+    digitalWrite(LED_STATUS_BOARD, ledState ? HIGH : LOW);
+    ledState = !ledState;
+    delay(250);
+    Serial.print(".");
+    attempt++;
+  }
+
+  digitalWrite(LED_STATUS_BOARD, LOW);
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("");
+    Serial.println("[WIFI] Initial connection established!");
+    Serial.print("[WIFI] IP Address: ");
+    Serial.println(WiFi.localIP());
+
+    // Configure NTP for time synchronization
+    Serial.println("[TIME] Configuring SNTP...");
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  } else {
+    Serial.println("\n[WIFI] Initial connection attempt timed out; background recovery active.");
+  }
+}
+
+// Non-blocking WiFi health check and recovery
+void maintainWifi() {
+  unsigned long now = millis();
+  if (WiFi.status() != WL_CONNECTED) {
+    if (lastWifiDisconnectTime == 0) {
+      lastWifiDisconnectTime = now;
+      Serial.println("[WIFI] Link down detected.");
+    } else if (now - lastWifiDisconnectTime > wifiRebootTimeout) {
+      Serial.println("[WIFI CRITICAL] Offline for > 5 minutes. Rebooting ESP to restore stack...");
+      ESP.restart();
+    }
+
+    if (now - lastWifiRetry > wifiRetryInterval) {
+      lastWifiRetry = now;
+      Serial.println("[WIFI] Re-triggering connection...");
+      WiFi.disconnect();
+      WiFi.reconnect();
+    }
+  } else {
+    if (lastWifiDisconnectTime != 0) {
+      Serial.println("[WIFI] Link restored!");
+      lastWifiDisconnectTime = 0;
+    }
+  }
+}
+
+// Non-blocking MQTT connection manager
+void maintainMqtt() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return; // Wait until WiFi is established
+  }
+
+  if (!mqttClient.connected()) {
+    unsigned long now = millis();
+    if (now - lastMqttRetry > mqttRetryInterval) {
+      lastMqttRetry = now;
+      Serial.print("[MQTT] Connecting to broker: ");
+      Serial.print(mqtt_server);
+      Serial.print(":");
+      Serial.println(mqtt_port);
+
+      if (mqttClient.connect(deviceId)) {
+        Serial.println("[MQTT] Connected successfully!");
+
+        // Subscribe to remote command topic
+        mqttClient.subscribe(cmdTopic);
+        Serial.print("[MQTT] Subscribed to topic: ");
+        Serial.println(cmdTopic);
+
+        // Publish initial state upon connection
+        publishGridState(debouncedGridActive);
+        publishTelemetry(debouncedGridActive);
+      } else {
+        Serial.print("[MQTT] Connection failed, rc=");
+        Serial.print(mqttClient.state());
+        Serial.println(". Will retry in background.");
       }
     }
+  } else {
+    mqttClient.loop();
   }
 }
 
@@ -262,17 +328,24 @@ void setup() {
   delay(2000); 
   Serial.println("\n--- Project Lunagrid Node Booting ---");
 
+  // Initialize Hardware Task Watchdog Timer (WDT)
+  Serial.printf("[WDT] Initializing Task Watchdog (%u seconds)...\n", WDT_TIMEOUT_SECONDS);
+  esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
+  esp_task_wdt_add(NULL); // Subscribe Arduino loop thread to WDT
+
   // Load identity
   getUniqueDeviceId();
   Serial.print("[DEVICE] Unique ID: ");
   Serial.println(deviceId);
 
-  // Connect
+  // Setup WiFi
   setupWifi();
+
+  // Configure MQTT
   mqttClient.setServer(mqtt_server, mqtt_port);
   mqttClient.setCallback(mqttCallback);
   mqttClient.setBufferSize(512); // Increase buffer size to handle larger telemetry payloads
-  
+
   // Read initial contactor state (LOW = active B-tariff due to pull-up shorted to GND)
   debouncedGridActive = (digitalRead(SEN_GRID_B_CONTACTOR) == LOW);
   lastGridActive = debouncedGridActive;
@@ -280,16 +353,14 @@ void setup() {
 
 // --- Arduino loop() ---
 void loop() {
-  // 1. Maintain Wi-Fi connectivity
-  if (WiFi.status() != WL_CONNECTED) {
-    setupWifi();
-  }
+  // 0. Reset Task Watchdog Timer on every loop cycle
+  esp_task_wdt_reset();
 
-  // 2. Maintain MQTT connectivity
-  if (!mqttClient.connected()) {
-    reconnectMqtt();
-  }
-  mqttClient.loop();
+  // 1. Maintain Wi-Fi connectivity (Non-blocking)
+  maintainWifi();
+
+  // 2. Maintain MQTT connectivity (Non-blocking)
+  maintainMqtt();
 
   // 3. Contactor state debouncing & event transmission
   // LOW = contactor closed (B-tariff active), HIGH = contactor open (B-tariff inactive)

@@ -126,16 +126,26 @@ In Hungary, Distribution System Operators (utility providers) offer a reduced-ra
 > For step-by-step instructions on setting up the local build environment, configuring WSL2/usbipd, and compiling/flashing the firmware, refer to the [Firmware Development Guide](firmware_development.md).
 
 ### 4.1 State Machine Architecture
-*   `BOOT` -> Initialize GPIOs, configure internal pull-up on GPIO 3, read initial contactor state.
-*   `CONNECTING_WIFI` -> Turn on Wi-Fi, attempt connection to configured SSID. If connection fails after 15 seconds, reset the ESP.
-*   `CONNECTING_MQTT` -> Establish connection to the MQTT Broker on Port 1883. Subscribe to the command topic.
-*   `MONITORING` -> Listen to state transitions on GPIO 3. Upon state change, apply debounce filter.
-*   `TRANSMITTING` -> Send MQTT state or telemetry payload.
+*   `BOOT` -> Initialize GPIOs, configure internal pull-up on GPIO 3, initialize Hardware Task Watchdog Timer (30s timeout), read initial contactor state.
+*   `CONNECTING_WIFI` -> Configure Wi-Fi station parameters (modem sleep disabled, max 19.5 dBm TX power, asynchronous event handlers). Attempt connection for up to 10 seconds during boot. If connection is pending, boot sequence proceeds and background recovery maintains the link.
+*   `CONNECTING_MQTT` -> Non-blocking connection attempts to the MQTT Broker on Port 1883 every 5 seconds. Subscribe to command topic upon connection.
+*   `MONITORING` -> Continuous loop monitoring state transitions on GPIO 3 with 100 ms debounce filter while feeding the hardware watchdog.
+*   `TRANSMITTING` -> Send MQTT state transitions (immediate) or telemetry health metrics (every 5 minutes).
 
-### 4.2 Edge Processing & Analytics
+### 4.2 Edge Processing, Resiliency & Recovery
 *   **Software Debouncing:** Mechanical contactors can experience contact bounce for 10–20 ms upon closure or release. The firmware implements a 100 ms software debounce window. The state of GPIO 3 must remain constant for at least 100 ms to qualify as a valid grid status transition, preventing duplicate logging.
 *   **Time Synchronization:** The device synchronizes its internal RTC using Network Time Protocol (NTP) pools (`pool.ntp.org`) immediately upon Wi-Fi connection. Timestamps are written in UNIX Epoch format.
-*   **Network Outage Behavior:** In the current version, the firmware does not perform local flash buffering. If the Wi-Fi or MQTT broker is disconnected, the device attempts to reconnect in a blocking loop (for MQTT) or restarts (for Wi-Fi). Any grid state transitions that occur during a network outage will not be recorded.
+*   **Low/Fair Wi-Fi Signal Optimization:**
+    *   **Modem Sleep Disabled (`WiFi.setSleep(false)`):** Prevents the ESP32 RF frontend from entering low-power sleep states, eliminating missed AP DTIM/beacon frames, jitter, and intermittent AP de-authentications in weak signal environments (-75 to -85 dBm).
+    *   **Maximum TX Power (`WiFi.setTxPower(WIFI_POWER_19_5dBm)`):** Boosts transmit power to the hardware maximum for reliable communication with distant access points.
+*   **Non-Blocking Network Recovery:**
+    *   **Wi-Fi Recovery:** If the link drops, non-blocking reconnection attempts occur every 10 seconds without stalling contactor monitoring or loop execution.
+    *   **MQTT Recovery:** Reconnection attempts are scheduled every 5 seconds without blocking loops. MQTT `PINGREQ` keep-alive packets maintain the TCP session between the 5-minute periodic telemetry transmissions.
+    *   **Prolonged Outage Fallback:** If Wi-Fi remains continuously disconnected for longer than 5 minutes (300 seconds), the node performs a clean software restart (`ESP.restart()`) to reset the Wi-Fi radio stack.
+*   **Hardware Task Watchdog Timer (WDT):**
+    *   Configured with a **30-second timeout** (`esp_task_wdt_init(30, true)`).
+    *   Fed on every cycle of `loop()`. If a low-level driver deadlock or hardware freeze occurs, the WDT triggers an automatic hardware panic reboot.
+
 
 ---
 

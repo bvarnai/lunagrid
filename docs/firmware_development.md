@@ -218,8 +218,41 @@ If the upload process times out or fails to synchronise with the board (`esptool
 
 ---
 
-## 7. Additional References
+## 7. Network Resiliency, Low-Signal Hardening & Watchdog
+
+In long-running installations (weeks/months) with low to fair Wi-Fi signal (-75 to -85 dBm), default Wi-Fi and blocking reconnection routines can result in missed frames, DHCP lease renewal failure, or firmware freezes. The firmware includes several hardening mechanisms:
+
+### 7.1 Wi-Fi Power & RF Optimizations
+- **Modem Sleep Disabled (`WiFi.setSleep(false)`):** Disables 802.11 modem sleep. In weak-signal environments, modem sleep can cause missed AP DTIM/beacon frames and unexpected AP de-authentications.
+- **Maximum TX Power (`WiFi.setTxPower(WIFI_POWER_19_5dBm)`):** Forces maximum transmit power on the ESP32-C3 SuperMini's onboard antenna.
+- **Flash Protection (`WiFi.persistent(false)`):** Prevents repetitive flash writes during network reconnections.
+- **Asynchronous Event Handlers (`WiFi.onEvent(...)`):** Monitors network state transitions and logs disconnect reason codes to the serial console without polling overhead.
+
+### 7.2 Non-Blocking Reconnection State Machine
+- **Non-Blocking Wi-Fi Retry:** If connection is lost, retries every 10 seconds without blocking the sensor sampling loop or contactor debouncing.
+- **Non-Blocking MQTT Retry:** If the MQTT broker drops, retries connection every 5 seconds.
+- **Fallback Auto-Reboot:** If the device remains continuously disconnected from Wi-Fi for more than **5 minutes (300 seconds)**, `ESP.restart()` is called to cleanly reset the network stack.
+
+### 7.3 Hardware Task Watchdog Timer (WDT)
+- **30-Second Hardware Timeout:** `esp_task_wdt_init(30, true)` is enabled in `setup()` and subscribed to the main Arduino thread.
+- **Continuous Reset:** `esp_task_wdt_reset()` is called on every iteration of `loop()`. If an unexpected low-level driver freeze or deadlock occurs for > 30 seconds, the hardware watchdog triggers an automatic panic reboot.
+
+### 7.4 Timing & Interval Summary
+
+| Mechanism | Interval / Timeout | Behavior |
+| :--- | :--- | :--- |
+| **Grid State Transitions** | Immediate (100ms debounce) | Published instantly upon contactor edge transition |
+| **Telemetry Health Report** | 5 minutes (300s) | Periodically publishes RSSI, heap, uptime, and firmware version |
+| **MQTT Keep-Alive** | 15 seconds (PINGREQ) | Maintained automatically by `PubSubClient` via non-blocking `loop()` |
+| **Wi-Fi Retry Interval** | 10 seconds | Non-blocking reconnect attempts when disconnected |
+| **Wi-Fi Outage Fallback** | 5 minutes (300s) | Clean hardware reboot if Wi-Fi remains down continuously |
+| **Hardware Task Watchdog** | 30 seconds | Hard reset if main execution loop deadlocks |
+
+---
+
+## 8. Additional References
 
 - **Firmware Release & Rollout Guide:** [firmware_release_guide.md](firmware_release_guide.md)
 - **Standalone ESPHome Prototyping Quickstart:** [usb_serial_quickstart.md](usb_serial_quickstart.md)
 - **Project Abstract & Architecture Specs:** [system_architecture.md](system_architecture.md)
+
