@@ -21,7 +21,7 @@ chargers:
           'A';
         } else if (typeof enabledState !== 'undefined' && enabledState) {
           var elapsed = (new Date().getTime() - (typeof enableTime !== 'undefined' ? enableTime : 0)) / 1000;
-          elapsed < 45 ? 'B' : 'C';
+          elapsed < 90 ? 'B' : 'C';
         } else {
           'B';
         }
@@ -59,7 +59,7 @@ chargers:
             script: |
               if (typeof enabledState !== 'undefined' && enabledState) {
                 var elapsed = (new Date().getTime() - (typeof enableTime !== 'undefined' ? enableTime : 0)) / 1000;
-                elapsed < 45 ? 'B' : 'C';
+                elapsed < 90 ? 'B' : 'C';
               } else {
                 'B';
               }
