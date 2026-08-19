@@ -118,7 +118,5 @@ If you manage vehicle charging using EVCC, you can configure it to follow the gr
    - **State Emulation & Control**: EVCC subscribes to this topic. Using the custom Javascript state machine configured on `my_charger` in [evcc.yaml](../infrastructure/evcc/evcc.yaml), it translates the contactor state into the passive charger status:
      - If B-tariff is OFF (contactor de-energized), the status is mapped to `'A'` (disconnected / standby).
      - If B-tariff turns ON, the status transitions to `'B'` (connected / waiting).
-     - When EVCC enables charging (`enable: true`), the charger waits for **45 seconds** before transitioning from `'B'` to `'C'` (charging). This delay allows the vehicle (e.g. Skoda Enyaq) to wake up smoothly and prevents immediate charging faults.
+     - When EVCC enables charging (`enable: true`), the charger waits for **90 seconds** before transitioning from `'B'` to `'C'` (charging). This delay allows EVCC's `wakeUpTimer` to expire and trigger an API-based wake-up call to the vehicle (e.g. Skoda Enyaq) and prevents premature charging state transitions.
    - For complete configuration details, refer to the [EVCC Integration & Setup Guide](evcc_integration.md).
-
-

@@ -33,7 +33,7 @@ In this flow, EVCC acts as a smart controller following the state of the physica
 2. **State Emulation via JavaScript:**
    - **Offline/Standby:** If `mqttStatus` is `'A'`, `'off'`, `'OFF'`, or `'0'`, the charger returns status `'A'` (disconnected / standby).
    - **Connected & Ready:** If `mqttStatus` is active (e.g. `'C'` or `'on'`) but charging is not yet enabled by EVCC (`enabledState` is false), the charger returns status `'B'` (connected).
-   - **Delayed Charging State Transition:** Once EVCC enables the loadpoint (`enable: true`), the charger transitions from `'B'` (connected) to `'C'` (charging) after a **45-second delay** (tracked via `enableTime` inside the JS VM `my_charger`). This delay emulates the physical vehicle preparation/negotiation time, allowing the vehicle to wake up smoothly and preventing immediate charging faults.
+   - **Delayed Charging State Transition:** Once EVCC enables the loadpoint (`enable: true`), the charger transitions from `'B'` (connected) to `'C'` (charging) after a **90-second delay** (tracked via `enableTime` inside the JS VM `my_charger`). This delay keeps the charger in status `'B'` with `0W` long enough for EVCC's internal `wakeUpTimer` to expire and trigger an API-based vehicle wake-up call to the Škoda Connect API, while preventing false-positive early charging states.
 3. **Power Calculation:** Since the dumb charger has no physical power meter, EVCC calculates power draw in JavaScript using the emulated state. It returns `3680 W` (16A at 230V) when charging (status is `'C'`), and `0 W` otherwise.
 
 ### EVCC Configuration (`evcc.yaml`)
@@ -61,7 +61,7 @@ chargers:
           'A';
         } else if (typeof enabledState !== 'undefined' && enabledState) {
           var elapsed = (new Date().getTime() - (typeof enableTime !== 'undefined' ? enableTime : 0)) / 1000;
-          elapsed < 45 ? 'B' : 'C';
+          elapsed < 90 ? 'B' : 'C';
         } else {
           'B';
         }
@@ -99,7 +99,7 @@ chargers:
             script: |
               if (typeof enabledState !== 'undefined' && enabledState) {
                 var elapsed = (new Date().getTime() - (typeof enableTime !== 'undefined' ? enableTime : 0)) / 1000;
-                elapsed < 45 ? 'B' : 'C';
+                elapsed < 90 ? 'B' : 'C';
               } else {
                 'B';
               }
